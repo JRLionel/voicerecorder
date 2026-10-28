@@ -1,5 +1,8 @@
 node_modules/
 .env
 server/data/
+server/uploads/
+server/jobs/
 testData/
 .DS_Store
+.workbuddy

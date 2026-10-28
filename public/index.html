@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VoiceScribe 声记 · 语音转文字工作台</title>
+  <title>VoiceScribe 声记 · 会议纪要工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23d84a35'/%3E%3Cg stroke='white' stroke-width='2' stroke-linecap='round'%3E%3Cline x1='6' y1='10' x2='6' y2='14'/%3E%3Cline x1='10' y1='7' x2='10' y2='17'/%3E%3Cline x1='14' y1='4' x2='14' y2='20'/%3E%3Cline x1='18' y1='9' x2='18' y2='15'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -25,12 +26,7 @@
         <span class="brand-name">VoiceScribe <em>声记</em></span>
       </a>
       <div class="topbar-actions">
-        <button class="btn btn-primary" id="btnImport">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/>
-          </svg>
-          导入文件
-        </button>
+        <span class="topbar-hint">本机运行 · 文件不出内网</span>
       </div>
     </header>
 
@@ -39,51 +35,37 @@
     <!-- ======= 视图：首页 ======= -->
     <main id="viewHome" class="view">
 
-      <!-- 模板区 -->
       <section class="templates">
         <div class="section-head">
-          <h2 class="section-title">选择模板发起闪记</h2>
-          <a class="more-link" href="javascript:void(0)">更多模板
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
-          </a>
+          <h2 class="section-title">发起新记录</h2>
         </div>
-        <div class="template-grid">
-          <button class="tpl-card tpl-meeting" data-template="meeting">
-            <span class="tpl-icon" aria-hidden="true">
+        <div class="entry-grid">
+          <button class="entry-card entry-video" data-entry="video">
+            <span class="entry-icon" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/><path d="m9 15 2 2 4-4"/>
+                <rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="m16.5 11 4-2.6v7.2l-4-2.6"/>
               </svg>
             </span>
-            <span class="tpl-title">会议纪要</span>
-            <span class="tpl-desc">帮我智能总结会议内容生成待办</span>
+            <span class="entry-title">上传视频</span>
+            <span class="entry-desc">录屏 / 会议回放，自动抽音频</span>
           </button>
-          <button class="tpl-card tpl-transcribe" data-template="transcribe">
-            <span class="tpl-icon" aria-hidden="true">
+          <button class="entry-card entry-audio" data-entry="audio">
+            <span class="entry-icon" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 7V5h16v2M12 5v14M9 19h6"/>
               </svg>
             </span>
-            <span class="tpl-title">语音转写</span>
-            <span class="tpl-desc">音频转文字，一字不落精准记录</span>
+            <span class="entry-title">上传音频</span>
+            <span class="entry-desc">mp3 / m4a / wav，长录音可切分</span>
           </button>
-          <button class="tpl-card tpl-slice" data-template="slice">
-            <span class="tpl-icon" aria-hidden="true">
+          <button class="entry-card entry-rec" data-entry="record">
+            <span class="entry-icon" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/>
-                <path d="M8.2 10.8 15.8 7.2M8.2 13.2l7.6 3.6"/>
+                <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3.5"/>
               </svg>
             </span>
-            <span class="tpl-title">长音频切片</span>
-            <span class="tpl-desc">长录音智能识别事件边界并切分</span>
-          </button>
-          <button class="tpl-card tpl-report" data-template="report">
-            <span class="tpl-icon" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 21h18"/><rect x="5" y="12" width="3.5" height="6" rx="1"/><rect x="10.2" y="8" width="3.5" height="10" rx="1"/><rect x="15.5" y="4" width="3.5" height="14" rx="1"/>
-              </svg>
-            </span>
-            <span class="tpl-title">可视化报告</span>
-            <span class="tpl-desc">自动识别场景，可视化渲染内容</span>
+            <span class="entry-title">实时录音</span>
+            <span class="entry-desc">边开边转，结束即出纪要</span>
           </button>
         </div>
       </section>
@@ -94,7 +76,6 @@
           <nav class="tabs" id="tabs">
             <button class="tab active" data-tab="recent">最近</button>
             <button class="tab" data-tab="mine">我的</button>
-            <button class="tab" data-tab="shared" disabled>共享</button>
             <button class="tab" data-tab="fav">收藏</button>
           </nav>
           <div class="toolbar-right">
@@ -114,16 +95,20 @@
         </div>
 
         <div class="records-head">
-          <span class="rh-title">全部</span>
-          <span class="rh-col rh-time">创建时间</span>
-          <span class="rh-col rh-dur">时长</span>
-          <span class="rh-col rh-src">来源</span>
-          <span class="rh-col rh-size">大小</span>
+          <label class="rh-check">
+            <input type="checkbox" class="sel-box" id="checkAll" aria-label="全选当前列表">
+          </label>
+          <div class="head-cols">
+            <span class="rh-title">全部</span>
+            <span class="rh-col rh-time">创建时间</span>
+            <span class="rh-col rh-dur">时长</span>
+            <span class="rh-col rh-src">来源</span>
+            <span class="rh-col rh-size">大小</span>
+          </div>
         </div>
 
         <div class="records-body" id="recordsBody">
           <div class="list-loading" id="listLoading"><div class="loading-fill"></div></div>
-          <!-- JS 渲染 -->
         </div>
         <div class="load-more-wrap">
           <button class="btn btn-ghost" id="btnLoadMore" style="display:none">加载更多</button>
@@ -131,24 +116,24 @@
       </section>
     </main>
 
-    <!-- ======= 视图：新建（上传） ======= -->
-    <main id="viewNew" class="view" hidden>
+    <!-- ======= 视图：上传 ======= -->
+    <main id="viewNew" class="view view-narrow" hidden>
       <div class="view-head">
         <button class="btn btn-back" id="btnBackNew">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
           返回
         </button>
-        <h2 class="view-title" id="newViewTitle">发起闪记</h2>
+        <h2 class="view-title" id="newViewTitle">上传音频</h2>
       </div>
 
       <section class="card">
-        <div class="upload-zone" id="uploadArea">
+        <div class="upload-zone" id="uploadArea" tabindex="0" role="button" aria-label="选择文件">
           <svg class="upload-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2v10"/><path d="m8 6 4-4 4 4"/><path d="M20 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2"/>
           </svg>
           <p class="upload-label">拖拽文件到此处，或 <span>浏览文件</span></p>
-          <p class="upload-hint">mp3 / wav / m4a / ogg / flac / webm / mp4 &middot; 最大 25MB</p>
-          <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.webm,.mp4" hidden>
+          <p class="upload-hint" id="uploadHint">mp3 / wav / m4a / ogg / flac · 最大 2GB</p>
+          <input type="file" id="fileInput" hidden>
         </div>
 
         <div class="file-bar" id="fileInfo">
@@ -157,8 +142,27 @@
           <button class="file-remove" id="btnRemove" title="移除">&times;</button>
         </div>
 
-        <div class="controls">
-          <label class="control-label" for="language">识别语言</label>
+        <div class="field">
+          <span class="field-label">输出类型</span>
+          <div class="seg-control" id="outputSeg" role="group" aria-label="输出类型">
+            <button class="seg-btn active" data-value="summary">会议纪要</button>
+            <button class="seg-btn" data-value="transcript">仅转写</button>
+          </div>
+        </div>
+
+        <!-- 占位入口：功能未开放，但卡片本身可操作（点击说明原因） -->
+        <div class="opt-card is-locked" id="diarizationCard" role="button" tabindex="0"
+             aria-label="区分说话人，功能开发中，点击了解详情" aria-describedby="diarTips">
+          <div class="opt-head">
+            <span class="opt-title">区分说话人</span>
+            <span class="badge-soon">开发中</span>
+            <span class="switch is-off" aria-hidden="true"><i></i></span>
+          </div>
+          <p class="opt-sub" id="diarTips">自动标出每句话由谁说出，后续版本开放</p>
+        </div>
+
+        <div class="field">
+          <span class="field-label">识别语言</span>
           <select id="language">
             <option value="auto">自动检测</option>
             <option value="zh">中文</option>
@@ -168,18 +172,66 @@
           </select>
         </div>
 
-        <button class="btn btn-primary btn-start" id="btnTranscribe" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="6" y1="9" x2="6" y2="15"/><line x1="10" y1="6" x2="10" y2="18"/>
-            <line x1="14" y1="4" x2="14" y2="20"/><line x1="18" y1="8" x2="18" y2="16"/>
-          </svg>
-          开始转写
-        </button>
+        <button class="btn btn-primary btn-start" id="btnStart" disabled>开始处理</button>
       </section>
 
-      <div class="loading-bar" id="loading">
-        <div class="loading-track"><div class="loading-fill"></div></div>
-        <span>正在转写中，请稍候…</span>
+      <section class="card progress-card" id="progressCard" hidden>
+        <div class="stage-row">
+          <span class="stage-dot" id="stageDot"></span>
+          <span class="stage-name" id="stageName">正在准备</span>
+          <span class="stage-pct" id="stagePct">0%</span>
+        </div>
+        <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+        <div class="stage-foot">
+          <span id="stageDetail">—</span>
+          <button class="btn btn-ghost" id="btnCancel" hidden>取消任务</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- ======= 视图：录音 ======= -->
+    <main id="viewRec" class="view view-narrow" hidden>
+      <div class="view-head">
+        <button class="btn btn-back" id="btnBackRec">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
+          返回
+        </button>
+        <h2 class="view-title">实时录音</h2>
+      </div>
+
+      <section class="card rec-card">
+        <div class="rec-status">
+          <span class="rec-dot" id="recDot"></span>
+          <span id="recStatus">未开始</span>
+        </div>
+        <div class="rec-timer" id="recTimer">00:00</div>
+        <div class="rec-wave" id="recWave" aria-hidden="true"></div>
+
+        <div class="rec-hint" id="recHint">点击开始后会请求麦克风权限，音频边录边转</div>
+
+        <div class="rec-mic" id="recMicWrap">
+          <button class="btn btn-rec" id="btnMic">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3.5"/>
+            </svg>
+            开始录音
+          </button>
+        </div>
+      </section>
+
+      <section class="card sub-card" id="recSubCard" hidden>
+        <div class="card-head">
+          <span class="card-label">实时字幕</span>
+          <span class="live-tag" id="liveTag">识别中</span>
+        </div>
+        <div class="sub-list" id="recSubs">
+          <p class="sub-empty">开始说话，字幕会出现在这里</p>
+        </div>
+      </section>
+
+      <div class="rec-actions" id="recActions" hidden>
+        <button class="btn btn-pause" id="btnPause">暂停</button>
+        <button class="btn btn-primary btn-stop" id="btnStop">结束并生成纪要</button>
       </div>
     </main>
 
@@ -195,6 +247,9 @@
           <button class="icon-btn" id="btnFav" title="收藏">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8Z"/></svg>
           </button>
+          <button class="icon-btn" id="btnExport" title="导出 Markdown">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>
+          </button>
           <button class="icon-btn danger" id="btnDelete" title="删除">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7"/></svg>
           </button>
@@ -202,19 +257,28 @@
       </div>
 
       <div class="detail-meta" id="detailMeta"></div>
+      <div class="job-banner" id="jobBanner" hidden></div>
+
+      <div class="player-bar" id="playerBar" hidden>
+        <audio id="player" controls preload="metadata"></audio>
+      </div>
 
       <section class="card result-card">
         <div class="card-head">
-          <span class="card-label">识别结果</span>
-          <button class="btn btn-ghost" id="btnCopy">复制</button>
+          <span class="card-label">转写全文</span>
+          <div class="card-head-actions">
+            <span class="seg-count" id="segCount"></span>
+            <button class="btn btn-ghost" id="btnCopy">复制</button>
+          </div>
         </div>
-        <div class="card-body" id="resultText"></div>
+        <div class="seg-list" id="segList"></div>
+        <div class="card-body" id="resultText" hidden></div>
         <div class="card-foot" id="usageInfo"></div>
       </section>
 
       <div class="loading-bar" id="summaryLoading">
         <div class="loading-track"><div class="loading-fill"></div></div>
-        <span>正在生成会议纪要…</span>
+        <span id="summaryLoadingText">正在生成会议纪要…</span>
       </div>
 
       <button class="btn btn-accent" id="btnSummary" style="display:none">
@@ -224,21 +288,38 @@
         生成会议纪要
       </button>
 
-      <section class="card result-card summary-card" id="summaryResult">
+      <section class="card summary-card" id="summaryResult" hidden>
         <div class="card-head">
           <span class="card-label accent">会议纪要</span>
           <button class="btn btn-ghost" id="btnCopySummary">复制</button>
         </div>
-        <div class="card-body" id="summaryText"></div>
+        <div id="summaryBody"></div>
       </section>
     </main>
 
     <footer class="foot">
-      <span class="foot-wave" aria-hidden="true">
-        <i></i><i></i><i></i><i></i><i></i>
-      </span>
-      VoiceScribe 声记 — 上传音频，AI 为你转写文字、生成会议纪要
+      <span class="foot-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      VoiceScribe 声记 — 录屏、长音频、实时录音，转文字并整理成会议纪要
     </footer>
+  </div>
+
+  <!-- 批量选择浮动操作条 -->
+  <div class="sel-bar" id="selBar" hidden role="region" aria-label="批量操作">
+    <span class="sel-count" id="selCount">已选择 0 项</span>
+    <button class="sel-btn sel-del" id="btnSelDelete">删除</button>
+    <button class="sel-btn sel-cancel" id="btnSelCancel">取消</button>
+  </div>
+
+  <!-- 占位功能弹窗 -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
+      <h3 class="modal-title" id="modalTitle">区分说话人</h3>
+      <p class="modal-body" id="modalBody"></p>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" id="modalCancel" hidden>取消</button>
+        <button class="btn btn-primary" id="modalOk">知道了</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
