@@ -1,7 +1,14 @@
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const WebSocket = require("ws");
 
-const { createJob, updateJob, upsertSegment, createRecord } = require("./db");
+const {
+  createJob, updateJob, upsertSegment, createRecord, insertMarker, deleteMarker,
+  listMarkers, getJob,
+} = require("./db");
+const { RecordingSink } = require("./recorder");
+const { JOBS_DIR } = require("./jobs");
 
 const FRAME_MS = 100;
 const BYTES_PER_SEC = 16000 * 2;      // 16k 单声道 s16le
@@ -19,11 +26,16 @@ function nowTs() {
  *
  * 时间轴口径：音频时钟 = 已推入的 PCM 时长（不是墙钟），
  * 所以暂停只要「不推帧」，时间轴自然跳过，无需补偿。
+ *
+ * 音频同时写入 jobs/<jobId>/audio.wav：录音记录因此可回放，
+ * 标记也能跳到对应秒；与「说话人分离」无关（录音不做分离）。
  */
 class RecordSession {
   constructor(client, opts) {
     this.client = client;
-    this.opts = opts;                 // {language, output}
+    this.opts = opts;                 // {jobId, language, output, sink}
+    this.jobId = opts.jobId;
+    this.sink = opts.sink;
     this.ws = null;
     this.ready = false;
     this.stopped = false;
@@ -50,6 +62,7 @@ class RecordSession {
 
   async start() {
     this.send({ type: "connecting" });
+    this.send({ type: "started", jobId: this.jobId });
     try {
       await this.openTask();
     } catch (e) {
@@ -142,7 +155,7 @@ class RecordSession {
           started = true;
           this.ready = true;
           if (!settled) { settled = true; clearTimeout(this.taskTimer); }
-          this.send({ type: "ready" });
+          this.send({ type: "ready", audioMs: Math.round(this.audioMs) });
           this.flushPending();
           this.keepalive = setInterval(() => {
             if (this.ws?.readyState === WebSocket.OPEN) {
@@ -226,6 +239,7 @@ class RecordSession {
   handleAudio(buf) {
     if (this.stopped) return;
     this.audioMs += (buf.length / BYTES_PER_SEC) * 1000;
+    if (this.sink) this.sink.write(buf);
 
     if (!this.ready || this.rotating) {
       if (this.pendingBytes < MAX_BUFFER_BYTES) {
@@ -285,6 +299,8 @@ class RecordSession {
     if (this.ready && !this.rotating) {
       const silence = Buffer.alloc(BYTES_PER_SEC * 0.5);
       this.rawSend(silence);
+      if (this.sink) this.sink.write(silence);
+      this.audioMs += 500;
     }
     this.send({ type: "paused", audioMs: Math.round(this.audioMs) });
   }
@@ -300,65 +316,94 @@ class RecordSession {
     await this.finishTask();
     try { this.ws && this.ws.close(); } catch {}
 
+    // 先把文件收尾，后面无论有没有内容都要关掉句柄
+    const durationMs = this.sink ? await this.sink.finalize() : Math.round(this.audioMs);
     const sentences = this.sentences.slice();
+
     if (!sentences.length) {
-      this.send({ type: "done", jobId: null, recordId: null, empty: true });
+      this.cleanupEmpty();
+      this.send({ type: "done", jobId: this.jobId, recordId: null, empty: true });
       return null;
     }
 
-    const job = createJob({
-      sourceType: "recording",
-      filename: `实时录音 ${new Date().toLocaleString("zh-CN")}`,
-      durationMs: Math.round(this.audioMs),
-      engine: "bailian_stream",
-      output: this.opts.output,
-      language: this.opts.language,
-    });
-    updateJob(job.id, {
+    const title = `实时录音 ${new Date().toLocaleString("zh-CN")}`;
+
+    updateJob(this.jobId, {
       status: "done",
       stage: "DONE",
       progress: 100,
-      effective_ms: Math.round(this.audioMs),
+      duration_ms: durationMs,
+      effective_ms: durationMs,
+      audio_path: this.sink ? this.sink.filePath : null,
       chunk_total: sentences.length,
       chunk_done: sentences.length,
+      diarize_status: "off",
     });
+
     sentences.forEach((s, i) => {
       upsertSegment({
-        jobId: job.id, idx: i,
+        jobId: this.jobId, idx: i,
         startMs: s.startMs, endMs: s.endMs,
         text: s.text, status: "done", engine: "bailian_stream",
       });
     });
 
     const transcript = sentences.map((s) => s.text).join("\n");
+    const markers = listMarkers(this.jobId);
     const record = createRecord({
-      title: `实时录音 ${new Date().toLocaleString("zh-CN")}`,
+      title,
       summary: transcript.replace(/\s+/g, " ").slice(0, 46),
       source: "recording",
       template: this.opts.output === "summary" ? "meeting" : "transcribe",
       filename: null,
       size: null,
-      duration: Math.round(this.audioMs / 1000),
+      duration: Math.round(durationMs / 1000),
       language: this.opts.language,
       transcript,
-      job_id: job.id,
+      job_id: this.jobId,
     });
-    updateJob(job.id, { record_id: record.id });
+    updateJob(this.jobId, { record_id: record.id });
 
     this.send({
       type: "done",
-      jobId: job.id,
+      jobId: this.jobId,
       recordId: record.id,
-      durationMs: Math.round(this.audioMs),
+      durationMs,
       sentences: sentences.length,
+      markers: markers.length,
     });
-    return { job, record };
+    return { job: getJob(this.jobId), record };
   }
 
-  close() {
+  /** 没识别到内容：删掉空任务与半截音频，避免留下 0 句的记录 */
+  cleanupEmpty() {
+    updateJob(this.jobId, {
+      status: "canceled", stage: "CANCELED", error: "没有识别到语音内容",
+    });
+    try {
+      const dir = path.join(JOBS_DIR, this.jobId);
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {}
+  }
+
+  /** 页面关闭 / 连接断开：停止写入并标记中断，已提交的标记保留 */
+  abort(reason = "录音中断（页面已关闭）") {
+    if (this.stopped) return;
     this.stopped = true;
     clearInterval(this.keepalive);
     try { this.ws && this.ws.close(); } catch {}
+    if (this.sink) {
+      this.sink.abort();
+      this.sink = null;
+    }
+    updateJob(this.jobId, {
+      status: "failed", stage: "FAILED", error: reason,
+    });
+  }
+
+  close() {
+    if (this.stopped) return;
+    this.abort("录音连接已关闭");
   }
 }
 
@@ -367,6 +412,7 @@ function attachRealtime(server) {
 
   wss.on("connection", (client) => {
     let session = null;
+    let jobId = null;
     client.isAlive = true;
     client.on("pong", () => { client.isAlive = true; });
 
@@ -389,7 +435,26 @@ function attachRealtime(server) {
           }));
           return;
         }
+
+        // 起始就建 job：标记需要归属，录音也需要回放
+        const job = createJob({
+          sourceType: "recording",
+          filename: `实时录音 ${new Date().toLocaleString("zh-CN")}`,
+          durationMs: null,
+          engine: "bailian_stream",
+          output: msg.output === "transcript" ? "transcript" : "summary",
+          language: msg.language || "auto",
+          options: { diarize: false },
+        });
+        jobId = job.id;
+        updateJob(jobId, { status: "running", stage: "RECORDING", progress: 0 });
+
+        const dir = path.join(JOBS_DIR, jobId);
+        const sink = new RecordingSink(path.join(dir, "audio.wav")).open();
+
         session = new RecordSession(client, {
+          jobId,
+          sink,
           apiKey: process.env.DASHSCOPE_API_KEY,
           host: process.env.BAILIAN_WS_HOST,
           workspace: process.env.BAILIAN_WORKSPACE,
@@ -398,6 +463,42 @@ function attachRealtime(server) {
           output: msg.output === "transcript" ? "transcript" : "summary",
         });
         await session.start();
+        return;
+      }
+
+      if (msg.type === "mark") {
+        if (!jobId) {
+          client.send(JSON.stringify({ type: "marker-nack", id: msg.id, message: "尚未开始录音" }));
+          return;
+        }
+        try {
+          const text = String(msg.text || "").trim();
+          if (!text) throw new Error("标记内容为空");
+          insertMarker({
+            id: String(msg.id || crypto.randomUUID()),
+            jobId,
+            seq: Number(msg.seq) || 0,
+            startMs: Number(msg.startMs) || 0,
+            endMs: msg.endMs == null ? null : Number(msg.endMs),
+            text,
+            duringPause: msg.duringPause ? 1 : 0,
+            createdAt: nowTs(),
+          });
+          client.send(JSON.stringify({ type: "marker-ack", id: msg.id }));
+        } catch (e) {
+          client.send(JSON.stringify({ type: "marker-nack", id: msg.id, message: e.message }));
+        }
+        return;
+      }
+
+      if (msg.type === "mark-delete") {
+        if (!jobId || !msg.id) return;
+        try {
+          deleteMarker(String(msg.id));
+          client.send(JSON.stringify({ type: "marker-ack", id: msg.id, deleted: true }));
+        } catch (e) {
+          client.send(JSON.stringify({ type: "marker-nack", id: msg.id, message: e.message }));
+        }
         return;
       }
 
@@ -414,8 +515,12 @@ function attachRealtime(server) {
     });
 
     client.on("close", () => {
-      if (session) session.close();
-      session = null;
+      if (session) {
+        // 已经正常 stop 过的会话不再处理
+        session.abort("录音中断（页面已关闭），已保存的标记不受影响");
+        session = null;
+      }
+      jobId = null;
     });
   });
 

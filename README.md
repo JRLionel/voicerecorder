@@ -5,10 +5,11 @@
 线上会议只拿到录屏？把文件丢进来，它会自动抽音频、切片转写、整理成带时间戳的会议纪要；开会时也可以直接开麦克风实时转字幕，结束后一键出纪要。
 
 - 全程本机运行，`127.0.0.1` 单用户，音频与密钥不出内网
-- 静态文件用 MIMO ASR，实时录音用阿里云百炼流式识别
-- 结果落 SQLite，支持搜索、收藏、详情回放、批量删除
+- 静态文件默认用 MIMO ASR；开启「区分说话人」后改走百炼离线分离；实时录音用百炼流式识别
+- 录音页是三区工作台：顶部时间轴、左侧实时转写、右侧用户标记（回车成条，时间自动对齐）
+- 结果落 SQLite，支持搜索、收藏、详情回放、说话人改名、批量删除
 
-> 当前为个人自用版本，「区分说话人」入口已保留但功能未开放（点击会提示开发中）。
+> 「区分说话人」本期只作用于**静态文件**。实时流式模型不返回说话人，录音页的开关保留但锁定，点击会说明原因。
 
 ---
 
@@ -29,6 +30,23 @@
 - **字率护栏**：某片字数低于 1.2 字/秒判为模型退化，自动改用百炼流式兜底
 - 断点续跑：切点由音频内容决定、可复现，服务重启后点「继续处理」只补未完成的片
 - 支持取消、状态与进度实时回传（探测 → 抽音频 → 切片 → 转写 → 纪要）
+
+### 区分说话人（静态文件）
+
+- 上传页开关：关 → MIMO 切片转写；开 → 百炼 `qwen-audio-3.0-asr-flash-filetrans` 整文件异步识别
+- 离线通道四步：取上传凭证 → 直传 `oss://` → 提交异步任务 → 轮询取结果；一次任务内说话人编号全局稳定
+- 可选「参会人数」提示（自动 / 2~6+），用于收敛自动聚类偏多的情况
+- 结果异常显式暴露：只有一个编号 → 判「分离未生效」，文本照用但提示；编号过多 → 判「疑似过度聚类」，可重跑
+- 详情页可给说话人改名（如「说话人2」→「张总」），纪要里的负责人会跟着用真名
+- 上线前先验证模型：`npm run verify:diar -- <双人对话音频> --speakers 2`
+
+### 实时录音工作台
+
+- 三区布局：顶部时间轴（波形 / 播放头 / 标记钉）、左侧实时转写、右侧用户标记
+- 标记：首次键入锁定音频时间戳并实时显示「开始于 00:12:43」，回车成条；中文输入法选词回车不会误提交
+- 标记与字幕共用同一条音频时钟，暂停时时间轴冻结，暂停期间记的标记落在暂停点
+- 录音音频边录边落盘，详情页可直接回放、点时间戳跳转
+- 纪要生成时标记作为高优先级上下文注入，并单独输出「现场标记」一节，逐条标注是否被采纳
 
 ### 会议纪要
 
@@ -82,6 +100,7 @@ cp .env.example .env
 | `BAILIAN_WS_HOST` | 百炼 workspace 专属域名 | `{WorkspaceId}.cn-beijing.maas.aliyuncs.com` |
 | `BAILIAN_WORKSPACE` | 百炼 workspace id | `{WorkspaceId}` |
 | `ASR_MODEL` | 百炼流式识别模型 | `qwen-audio-3.0-asr-flash-streaming` |
+| `DIAR_MODEL` | 静态文件的说话人分离模型 | `qwen-audio-3.0-asr-flash-filetrans` |
 | `PORT` | 服务端口，默认 3000 | `3000` |
 
 > 百炼的三项参数都来自控制台下载的 `apiKey-*.csv`（`apiKey` / `apiHost` / `workspaceId`）。
@@ -204,13 +223,16 @@ voicerecorder/
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/api/jobs` | 上传文件并创建任务（multipart：`file` / `output` / `language`） |
-| `GET` | `/api/jobs/:id` | 任务状态、进度、切片、关联记录 |
+| `POST` | `/api/jobs` | 上传文件并创建任务（multipart：`file` / `output` / `language` / `diarize` / `speakerCount`） |
+| `GET` | `/api/jobs/:id` | 任务状态、进度、切片、标记、说话人名册、关联记录 |
 | `POST` | `/api/jobs/:id/cancel` | 取消任务 |
 | `POST` | `/api/jobs/:id/resume` | 断点续跑 |
-| `POST` | `/api/jobs/:id/summary` | 基于已有转写重新生成纪要 |
-| `GET` | `/api/jobs/:id/audio` | 播放用 wav（支持 Range） |
-| `WS` | `/ws/record` | 实时录音通道（`ready` / `sentence` / `paused` / `resumed` / `done` / `error`） |
+| `POST` | `/api/jobs/:id/summary` | 基于已有转写重新生成纪要（自动带上标记） |
+| `POST` | `/api/jobs/:id/diarize` | 对已有音频重新做说话人分离 |
+| `PATCH` | `/api/jobs/:id/speakers` | 说话人改名（`{ localId, label }`） |
+| `DELETE` | `/api/jobs/:id/markers/:markerId` | 删除单条标记 |
+| `GET` | `/api/jobs/:id/audio` | 播放用 wav（支持 Range；录音记录首次可用） |
+| `WS` | `/ws/record` | 实时录音通道（`started` / `ready` / `sentence` / `mark` / `paused` / `resumed` / `done` / `error`） |
 | `GET` | `/api/records` | 记录列表（`q` / `page` / `pageSize`） |
 | `GET` | `/api/records/:id` | 记录详情 |
 | `POST` | `/api/records` | 新建记录 |
@@ -246,10 +268,13 @@ node scripts/transcribe.js 会议录屏.mp4 --chunk 900 --concurrency 3 --lang z
 
 ## 已知限制
 
-- **不支持区分说话人**：入口保留为占位，点击弹窗说明。百炼 3.0/3.1 的 `diarization_enabled` 参数存在但 `speaker_id` 恒为 0，故本期不做
+- **实时录音不做说话人分离**：流式模型不返回 `speaker_id`，录音页开关保留但锁定。需要分离时把音频作为文件上传处理。
+- **分离开启后音频上限 2 小时**：超过时开关置灰。分离走百炼离线任务（临时上传 `oss://` → 异步识别 → 轮询），失败时文本照用，只是没有说话人标签。
+- **分离效果需先验证**：`qwen-audio-3.0-asr-flash-filetrans` 的 `speaker_id` 在本 workspace 曾实测恒为 0。上线前先跑 `npm run verify:diar -- <双人对话音频> --speakers 2`；仍恒 0 就把 `DIAR_MODEL` 换成 `paraformer-v2`，调用序列不用改。
 - 单文件上限 2GB / 4 小时，超出请先裁剪
 - 录音与转写强依赖网络；百炼连接失败会断流报错，不会静默丢字
-- 服务重启会把运行中的任务标记为中断，需在详情页手动「继续处理」
+- 录音音频会落盘到 `server/jobs/<id>/audio.wav`（约 115MB/小时），随记录删除一起清理
+- 服务重启会把运行中的任务标记为中断，需在详情页手动「继续处理」；中断的录音会话会被清理半截音频，已提交的标记保留
 - 收藏仅存浏览器 `localStorage`，换浏览器或清缓存后会丢失
 
 ---

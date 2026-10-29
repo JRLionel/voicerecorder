@@ -6,7 +6,9 @@
   "scripts": {
     "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 node server.js",
     "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 node server.js",
-    "transcribe": "node scripts/transcribe.js"
+    "transcribe": "node scripts/transcribe.js",
+    "verify:diar": "NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/verify-diarization.js",
+    "test:offline": "node scripts/test-offline.js"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

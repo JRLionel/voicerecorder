@@ -43,6 +43,11 @@ const barFill = $("#barFill");
 const btnCancel = $("#btnCancel");
 
 const diarizationCard = $("#diarizationCard");
+const diarSwitch = $("#diarSwitch");
+const diarExtra = $("#diarExtra");
+const diarTips = $("#diarTips");
+const speakerCountSel = $("#speakerCount");
+const diarizeBanner = $("#diarizeBanner");
 const modalBackdrop = $("#modalBackdrop");
 const modalOk = $("#modalOk");
 const modalCancel = $("#modalCancel");
@@ -81,9 +86,14 @@ const state = {
   viewMode: localStorage.getItem("vs_view_mode") || "list",
   entry: "audio",           // video | audio
   output: "summary",
+  diarize: false,           // 上传时是否开启说话人分离
+  speakerCount: null,
+  fileDuration: null,       // 选中文件的时长（秒），用于 >2h 置灰
   record: null,
   job: null,
   segments: [],
+  markers: [],
+  speakers: [],
   pollTimer: null,
   lastFocus: null,
 };
@@ -402,12 +412,16 @@ $("#viewToggle").addEventListener("click", (e) => {
   renderRecords();
 });
 
-/* ---------------- 占位入口弹窗 ---------------- */
+/* ---------------- 弹窗 ---------------- */
 
 const MODAL_COPY = {
-  diarization: {
-    title: "区分说话人",
-    body: "这个功能会自动标出每句话是谁说的，目前还在开发中，暂时不能开启。\n\n你可以先完成转写和纪要，点击时间戳可以回到音频的对应位置。",
+  recDiarization: {
+    title: "实时录音暂不支持区分说话人",
+    body: "实时转写用的是流式模型，它不返回说话人信息，所以录音过程中无法标出「谁说的」。\n\n需要分离时，可以把同一段录音在结束后作为音频文件上传处理；录音文件已在本地保存，详情页可以直接下载回放。",
+  },
+  diarLimit: {
+    title: "文件超过 2 小时",
+    body: "开启说话人分离后，官方建议音频不超过 2 小时，否则可能识别失败或超时。\n\n请先裁剪，或关闭开关按普通方式转写——普通方式支持到 4 小时。",
   },
 };
 
@@ -464,13 +478,57 @@ function closeModal(result = false) {
   if (resolve) resolve(result);
 }
 
-diarizationCard.addEventListener("click", () => openModal("diarization"));
+const MAX_DIARIZE_SEC = 2 * 3600;
+
+/** 超过 2 小时就不能开：与其跑到一半失败，不如在选择文件后就拦住 */
+function diarizeBlocked() {
+  return Boolean(state.fileDuration && state.fileDuration > MAX_DIARIZE_SEC);
+}
+
+function refreshDiarizeAvailability() {
+  const blocked = diarizeBlocked();
+  diarizationCard.classList.toggle("is-disabled", blocked);
+  diarizationCard.setAttribute("aria-disabled", blocked ? "true" : "false");
+  if (blocked && state.diarize) setDiarize(false, { silent: true });
+  diarTips.textContent = blocked
+    ? "文件超过 2 小时，开启分离前请先裁剪"
+    : "自动标出每句话由谁说出。开启后走离线分离，处理时间略长";
+}
+
+function setDiarize(on, { silent = false } = {}) {
+  if (on && diarizeBlocked()) {
+    if (!silent) openModal("diarLimit");
+    return;
+  }
+  state.diarize = Boolean(on);
+  diarSwitch.classList.toggle("is-off", !state.diarize);
+  diarSwitch.classList.toggle("is-on", state.diarize);
+  diarizationCard.setAttribute("aria-pressed", state.diarize ? "true" : "false");
+  diarExtra.hidden = !state.diarize;
+  if (!state.diarize) {
+    state.speakerCount = null;
+    if (speakerCountSel) speakerCountSel.value = "";
+  }
+}
+
+function toggleDiarize() {
+  if (diarizeBlocked()) return openModal("diarLimit");
+  setDiarize(!state.diarize);
+}
+
+diarizationCard.addEventListener("click", toggleDiarize);
 diarizationCard.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
-    openModal("diarization");
+    toggleDiarize();
   }
 });
+if (speakerCountSel) {
+  speakerCountSel.addEventListener("click", (e) => e.stopPropagation());
+  speakerCountSel.addEventListener("change", () => {
+    state.speakerCount = Number(speakerCountSel.value) || null;
+  });
+}
 modalOk.addEventListener("click", () => closeModal(true));
 modalCancel.addEventListener("click", () => closeModal(false));
 modalBackdrop.addEventListener("click", (e) => {
@@ -503,6 +561,8 @@ function openNew(entry) {
   uploadHint.textContent = meta.hint;
   clearFile();
   resetProgress();
+  setDiarize(false, { silent: true });
+  refreshDiarizeAvailability();
   switchView("new");
   uploadArea.focus();
 }
@@ -531,12 +591,36 @@ function setFile(file) {
   fileSize.textContent = formatSize(file.size);
   fileInfo.classList.add("show");
   btnStart.disabled = false;
+  state.fileDuration = null;
+  probeFileDuration(file).then((sec) => {
+    state.fileDuration = sec;
+    refreshDiarizeAvailability();
+  });
 }
 
 function clearFile() {
   fileInput.value = "";
   fileInfo.classList.remove("show");
   btnStart.disabled = true;
+  state.fileDuration = null;
+  refreshDiarizeAvailability();
+}
+
+/** 用 video 元素读元信息拿时长：音频也能被 video 解析 */
+function probeFileDuration(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const el = document.createElement("video");
+    el.preload = "metadata";
+    const done = (v) => {
+      URL.revokeObjectURL(url);
+      el.removeAttribute("src");
+      resolve(v);
+    };
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) ? el.duration : null);
+    el.onerror = () => done(null);
+    el.src = url;
+  });
 }
 
 uploadArea.addEventListener("dragover", (e) => {
@@ -577,6 +661,8 @@ const STAGE_TEXT = {
   PROBING: "正在读取文件信息",
   EXTRACTING: "正在抽取音频",
   CHUNKING: "正在规划分段",
+  UPLOAD_REMOTE: "正在上传用于分离",
+  DIARIZING: "正在识别说话人",
   TRANSCRIBING: "正在转写",
   SUMMARIZING: "正在生成纪要",
   DONE: "完成",
@@ -613,6 +699,11 @@ function renderProgress(job) {
       eta = ` · 预计还需 ${formatDuration(per * (total - done))}`;
     }
     stageDetail.textContent = `已转写 ${done}/${total} 段${eta}`;
+  } else if (job.stage === "UPLOAD_REMOTE") {
+    stageDetail.textContent = "正在把音频传到分离服务，长文件需要一会儿";
+  } else if (job.stage === "DIARIZING") {
+    const waited = Math.round((Date.now() - progressStart) / 1000);
+    stageDetail.textContent = `离线识别与说话人分离中 · 已等待 ${formatDuration(waited)}`;
   } else if (job.stage === "SUMMARIZING") {
     stageDetail.textContent = "分段摘要 → 合并成纪要，长会议需要几分钟";
   } else if (job.stage === "FAILED") {
@@ -643,6 +734,10 @@ async function startJob() {
   fd.append("file", file);
   fd.append("output", state.output);
   fd.append("language", language.value);
+  fd.append("diarize", state.diarize ? "true" : "false");
+  if (state.diarize && state.speakerCount) {
+    fd.append("speakerCount", String(state.speakerCount));
+  }
 
   try {
     const resp = await fetch("/api/jobs", { method: "POST", body: fd });
@@ -759,8 +854,118 @@ function setMeta(record, job) {
   parts.push(`<span>创建 <b>${formatDate(record?.created_at)}</b></span>`);
   const dur = job?.durationMs ? job.durationMs / 1000 : record?.duration;
   parts.push(`<span>时长 <b>${formatDuration(dur)}</b></span>`);
-  if (job?.chunkTotal) parts.push(`<span>分段 <b>${job.chunkTotal}</b></span>`);
+  if (job?.speakerCount) parts.push(`<span>说话人 <b>${job.speakerCount} 人</b></span>`);
+  else if (job?.chunkTotal) parts.push(`<span>分段 <b>${job.chunkTotal}</b></span>`);
   detailMeta.innerHTML = parts.join("");
+}
+
+const SPEAKER_FALLBACK_COLORS = ["#3565d9", "#7c4dd4", "#1f9a62", "#c97a12", "#d84a35", "#5f6b7a"];
+
+function speakerColor(localId) {
+  const found = state.speakers.find((s) => s.localId === localId);
+  if (found?.color) return found.color;
+  const i = Math.max(0, state.speakers.findIndex((s) => s.localId === localId));
+  return SPEAKER_FALLBACK_COLORS[i % SPEAKER_FALLBACK_COLORS.length];
+}
+
+/**
+ * 转写渲染：连续同一说话人的句子合并成一个发言块，
+ * 标记按时间插入同一列——两套内容共用一个时间轴才读得顺。
+ */
+function renderTranscriptRows(segments, markers) {
+  const items = [];
+  let turn = null;
+
+  for (const s of segments) {
+    const text = (s.text || "").trim();
+    if (!text) continue;
+    const spk = s.speakerLabel || s.speaker || null;
+    if (turn && spk === turn.speaker) {
+      turn.parts.push(text);
+      turn.endMs = s.endMs;
+    } else {
+      turn = { kind: "turn", speaker: spk, localId: s.speaker || null, startMs: s.startMs, endMs: s.endMs, parts: [text] };
+      items.push(turn);
+    }
+  }
+
+  for (const m of markers) {
+    items.push({
+      kind: "marker",
+      startMs: m.startMs,
+      endMs: m.endMs,
+      text: m.text,
+      duringPause: m.duringPause,
+    });
+  }
+
+  items.sort((a, b) => a.startMs - b.startMs);
+
+  return items
+    .map((it) => {
+      if (it.kind === "marker") {
+        return `<div class="marker-row" data-ms="${it.startMs}">
+          <span class="marker-badge">标记</span>
+          <p class="marker-text">${escapeHtml(it.text)}${it.duringPause ? `<span class="marker-pause">暂停时</span>` : ""}</p>
+          <button class="marker-ts" data-ms="${it.startMs}" title="跳转到此处">${formatFrac(it.startMs / 1000)}</button>
+        </div>`;
+      }
+      const chip = it.speaker
+        ? `<button class="spk-chip" data-local="${escapeAttr(it.localId || "")}"
+             style="--spk:${speakerColor(it.localId)}" title="点击改名">${escapeHtml(it.speaker)}</button>`
+        : "";
+      return `<div class="seg-row${chip ? " is-turn" : ""}" data-ms="${it.startMs}">
+        <button class="seg-ts" data-ms="${it.startMs}" title="跳转到此处">${formatFrac(it.startMs / 1000)}</button>
+        ${chip}
+        <p class="seg-text">${escapeHtml(it.parts.join(" "))}</p>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderDiarizeBanner(job) {
+  const st = job?.diarizeStatus;
+  if (!st || st === "off" || st === "ok") {
+    diarizeBanner.hidden = true;
+    return;
+  }
+  diarizeBanner.hidden = false;
+  const msg =
+    st === "suspect"
+      ? "疑似过度聚类：说话人数量可能偏多，可指定参会人数后重新标注"
+      : "本次未能区分说话人（所有句子被识别为同一人），文本与纪要仍可用";
+  diarizeBanner.innerHTML = `<span>${escapeHtml(msg)}</span>
+    <button class="btn btn-ghost" id="btnRediarize">重新标注</button>`;
+  const btn = $("#btnRediarize");
+  if (btn) {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "正在重新标注";
+      try {
+        const resp = await fetch(`/api/jobs/${job.id}/diarize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const data = await resp.json();
+        if (!data.success) {
+          showError(data.error || "重新标注失败");
+          btn.disabled = false;
+          btn.textContent = "重新标注";
+          return;
+        }
+        switchView("new");
+        newViewTitle.textContent = "重新标注说话人";
+        progressCard.hidden = false;
+        progressStart = Date.now();
+        pollJob(job.id);
+      } catch {
+        showError("网络错误，请检查后端是否启动");
+        btn.disabled = false;
+        btn.textContent = "重新标注";
+      }
+    });
+  }
 }
 
 function renderJobDetail(data) {
@@ -768,6 +973,8 @@ function renderJobDetail(data) {
   state.job = job;
   state.record = record;
   state.segments = segments;
+  state.markers = data.markers || [];
+  state.speakers = data.speakers || [];
 
   detailTitle.textContent = record?.title || "处理结果";
   setMeta(record, job);
@@ -792,6 +999,8 @@ function renderJobDetail(data) {
     }
   }
 
+  renderDiarizeBanner(job);
+
   if (data.hasAudio) {
     playerBar.hidden = false;
     player.src = `/api/jobs/${job.id}/audio`;
@@ -804,15 +1013,11 @@ function renderJobDetail(data) {
   if (withText.length) {
     segList.hidden = false;
     resultText.hidden = true;
-    segCount.textContent = `${withText.length} 段`;
-    segList.innerHTML = withText
-      .map(
-        (s) => `<div class="seg-row" data-ms="${s.startMs}">
-          <button class="seg-ts" data-ms="${s.startMs}" title="跳转到此处">${formatFrac(s.startMs / 1000)}</button>
-          <p class="seg-text">${escapeHtml(s.text)}</p>
-        </div>`
-      )
-      .join("");
+    const parts = [];
+    if (state.speakers.length) parts.push(`${state.speakers.length} 人`);
+    if (state.markers.length) parts.push(`${state.markers.length} 条标记`);
+    segCount.textContent = parts.join(" · ") || `${withText.length} 段`;
+    segList.innerHTML = renderTranscriptRows(withText, state.markers);
   } else {
     segList.hidden = true;
     resultText.hidden = false;
@@ -831,10 +1036,13 @@ function renderLegacyDetail(record) {
   state.record = record;
   state.job = null;
   state.segments = [];
+  state.markers = [];
+  state.speakers = [];
   detailTitle.textContent = record.title;
   setMeta(record, null);
   btnFav.classList.toggle("active", getFavs().has(record.id));
   jobBanner.hidden = true;
+  diarizeBanner.hidden = true;
   playerBar.hidden = true;
   segList.hidden = true;
   resultText.hidden = false;
@@ -879,6 +1087,28 @@ function renderSummaryBlock(json, markdown) {
           .join("")}</ul>`
       : `<p class="sum-empty">无</p>`;
 
+  const markerRows =
+    json.markers && json.markers.length
+      ? `<ul class="sum-list">${json.markers
+          .map((m) => {
+            const sec = parseClock(m.at);
+            const at = sec != null
+              ? `<button class="todo-at" data-ms="${sec * 1000}">${escapeHtml(m.at)}</button>`
+              : "";
+            const used = { content: "已纳入内容", decisions: "已纳入决议", todos: "已转待办", unused: "未纳入" }[m.usedIn] || "";
+            return `<li><span class="todo-text">${escapeHtml(m.text)}</span>
+              <span class="todo-owner">${escapeHtml(used)}</span>${at}</li>`;
+          })
+          .join("")}</ul>`
+      : "";
+
+  const speakerRows =
+    json.speakerPoints && json.speakerPoints.length
+      ? `<ul class="sum-list">${json.speakerPoints
+          .map((s) => `<li><b>${escapeHtml(s.speaker)}</b>：${escapeHtml((s.points || []).join("；"))}</li>`)
+          .join("")}</ul>`
+      : "";
+
   summaryBody.innerHTML = `
     <div class="sum-section">
       <span class="sum-label">主题</span>
@@ -901,6 +1131,16 @@ function renderSummaryBlock(json, markdown) {
         ? `<div class="sum-section"><span class="sum-label">参会人</span>
              <p class="sum-topic">${escapeHtml(json.attendees.join("、"))}</p></div>`
         : ""
+    }
+    ${
+      markerRows
+        ? `<div class="sum-section"><span class="sum-label">现场标记</span>${markerRows}</div>`
+        : ""
+    }
+    ${
+      speakerRows
+        ? `<div class="sum-section"><span class="sum-label">按人要点</span>${speakerRows}</div>`
+        : ""
     }`;
 }
 
@@ -920,9 +1160,65 @@ function seekTo(ms) {
 }
 
 segList.addEventListener("click", (e) => {
-  const btn = e.target.closest(".seg-ts");
-  if (btn) seekTo(Number(btn.dataset.ms));
+  const ts = e.target.closest(".seg-ts") || e.target.closest(".marker-ts");
+  if (ts) return seekTo(Number(ts.dataset.ms));
+  const chip = e.target.closest(".spk-chip");
+  if (chip) return startSpeakerRename(chip);
 });
+
+/** 发言块上的说话人 chip：就地改成真名，改完刷新整页数据 */
+function startSpeakerRename(chip) {
+  const localId = chip.dataset.local;
+  if (!localId || !state.job) return;
+  const old = chip.textContent;
+  const input = document.createElement("input");
+  input.className = "spk-input";
+  input.value = old;
+  input.setAttribute("aria-label", "修改说话人名称");
+  chip.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+  const finish = async (save) => {
+    if (settled) return;
+    settled = true;
+    const value = input.value.trim();
+    if (!save || !value || value === old) {
+      input.replaceWith(chip);
+      return;
+    }
+    try {
+      const resp = await fetch(`/api/jobs/${state.job.id}/speakers`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ localId, label: value }),
+      });
+      const data = await resp.json();
+      if (!data.success) {
+        showError(data.error || "改名失败");
+        input.replaceWith(chip);
+        return;
+      }
+      await openDetail({ jobId: state.job.id });
+      showError("名称已更新，已有纪要需要重新生成才会用上新名字");
+    } catch {
+      showError("网络错误，名称未保存");
+      input.replaceWith(chip);
+    }
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      finish(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener("blur", () => finish(true));
+}
 summaryBody.addEventListener("click", (e) => {
   const btn = e.target.closest(".todo-at");
   if (btn) seekTo(Number(btn.dataset.ms));
@@ -985,15 +1281,32 @@ btnExport.addEventListener("click", () => {
       lines.push("");
     }
     if (j.attendees?.length) lines.push(`## 参会人`, j.attendees.join("、"), "");
+    if (j.markers?.length) {
+      lines.push(`## 现场标记`);
+      j.markers.forEach((m) => lines.push(`- ${m.at ? m.at + " " : ""}${m.text}`));
+      lines.push("");
+    }
+    if (j.speakerPoints?.length) {
+      lines.push(`## 按人要点`);
+      j.speakerPoints.forEach((s) => lines.push(`- ${s.speaker}：${(s.points || []).join("；")}`));
+      lines.push("");
+    }
   }
   lines.push(`## 转写全文`, "");
   if (state.segments.length) {
     state.segments.forEach((s) => {
       if (!(s.text || "").trim()) return;
-      lines.push(`[${formatFrac(s.startMs / 1000)}] ${s.text}`);
+      const spk = s.speakerLabel || s.speaker;
+      lines.push(`[${formatFrac(s.startMs / 1000)}] ${spk ? spk + "：" : ""}${s.text}`);
     });
   } else {
     lines.push(record.transcript || "");
+  }
+  if (state.markers.length) {
+    lines.push("", `## 录音标记`, "");
+    state.markers.forEach((m) => {
+      lines.push(`- ${formatFrac(m.startMs / 1000)} ${m.text}`);
+    });
   }
   const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
   const a = document.createElement("a");
@@ -1067,89 +1380,250 @@ btnCopySummary.addEventListener("click", () => {
 
 /* ---------------- 实时录音 ---------------- */
 
+/**
+ * 三区工作台：
+ *   顶部  = 控制 + 时间轴（波形 / 播放头 / 标记钉）
+ *   左下  = 实时转写（事实层）
+ *   右下  = 用户标记（判断层）
+ *
+ * 时间轴口径：音频时钟 = 已推 PCM 的时长，暂停不前进。
+ * 标记只依赖这个时钟，所以它天然与字幕对齐，暂停期间记的标记落在暂停点。
+ */
+
 const rec = {
   ws: null,
   ctx: null,
   node: null,
   stream: null,
   scriptNode: null,
+  jobId: null,
   active: false,
   paused: false,
+  finalizing: false,
   audioMs: 0,
   sentences: new Map(),
-  bars: new Array(40).fill(0),
-  timer: null,
-  finalizing: false,
+  nodes: new Map(),
+  wave: [],                 // 每 2 秒一个桶，值为 0~1 的幅度
+  marks: [],
+  draft: { active: false, startMs: 0, startedAt: 0, text: "" },
+  ticker: null,
+  elapsedTicker: null,
+  follow: true,
+  wordCount: 0,
+  lastFinalMs: 0,
+  seq: 0,
+  afterStopGoHome: false,
+  stopTimer: null,
 };
 
+const recIdle = $("#recIdle");
+const recWorkspace = $("#recWorkspace");
 const recDot = $("#recDot");
 const recStatus = $("#recStatus");
 const recTimer = $("#recTimer");
-const recWave = $("#recWave");
-const recHint = $("#recHint");
-const recSubCard = $("#recSubCard");
 const recSubs = $("#recSubs");
-const recActions = $("#recActions");
+const recFoot = $("#recFoot");
+const recWordCount = $("#recWordCount");
+const noteList = $("#noteList");
+const noteEmpty = $("#noteEmpty");
+const noteInput = $("#noteInput");
+const composerStatus = $("#composerStatus");
+const composerStart = $("#composerStart");
+const composerElapsed = $("#composerElapsed");
+const noteCount = $("#noteCount");
+const markCount = $("#markCount");
+const tabMarkCount = $("#tabMarkCount");
 const btnMic = $("#btnMic");
 const btnPause = $("#btnPause");
 const btnStop = $("#btnStop");
-const recMicWrap = $("#recMicWrap");
+const recPins = $("#recPins");
+const recCanvas = $("#recCanvas");
+const recPlayhead = $("#recPlayhead");
+const recLive = $("#recLive");
+const liveTag = $("#liveTag");
+
+const TIMELINE_SPAN_MS = 5 * 60 * 1000;   // 超过 5 分钟就滚动窗口
+const WAVE_BUCKET_MS = 2000;
 
 function openRec() {
   resetRec();
   switchView("rec");
+  recIdle.hidden = false;
+  recWorkspace.hidden = true;
+}
+
+function showIdle() {
+  recIdle.hidden = false;
+  recWorkspace.hidden = true;
+}
+
+function showWorkspace() {
+  recIdle.hidden = true;
+  recWorkspace.hidden = false;
+  drawTimeline();
+  renderPins();
+  noteInput.focus({ preventScroll: true });
 }
 
 function resetRec() {
   rec.active = false;
   rec.paused = false;
-  rec.audioMs = 0;
-  rec.sentences.clear();
-  rec.bars = new Array(40).fill(0);
   rec.finalizing = false;
-  recTimer.textContent = "00:00";
-  recStatus.textContent = "未开始";
-  recDot.className = "rec-dot";
-  recHint.hidden = false;
-  recMicWrap.hidden = false;
-  recSubCard.hidden = true;
-  recSubs.innerHTML = `<p class="sub-empty">开始说话，字幕会出现在这里</p>`;
-  recActions.hidden = true;
-  btnMic.disabled = false;
-  btnMic.innerHTML = micIcon() + "开始录音";
-  btnPause.textContent = "暂停";
-  btnStop.disabled = true;
-  btnStop.textContent = "结束并生成纪要";
-  $("#liveTag").textContent = "识别中";
-  renderWave();
+  rec.audioMs = 0;
+  rec.jobId = null;
+  rec.sentences.clear();
+  rec.nodes.clear();
+  rec.wave = [];
+  rec.marks = [];
+  rec.follow = true;
+  rec.wordCount = 0;
+  rec.lastFinalMs = 0;
+  rec.seq = 0;
+  rec.afterStopGoHome = false;
+  clearInterval(rec.ticker);
+  rec.ticker = null;
+  clearInterval(rec.elapsedTicker);
+  rec.elapsedTicker = null;
+  clearTimeout(rec.stopTimer);
+  rec.stopTimer = null;
+
+  resetDraft();
+  if (recSubs) recSubs.innerHTML = `<p class="sub-empty">开始说话，字幕会出现在这里</p>`;
+  if (recTimer) recTimer.textContent = "00:00";
+  if (recStatus) recStatus.textContent = "连接中";
+  if (recDot) recDot.className = "rec-dot";
+  if (recFoot) recFoot.textContent = "已转写 00:00 / 已录 00:00";
+  if (recWordCount) recWordCount.textContent = "0 字";
+  if (recPins) recPins.innerHTML = "";
+  if (recPlayhead) recPlayhead.style.left = "0%";
+  renderNotes();
+  if (btnMic) {
+    btnMic.disabled = false;
+    btnMic.innerHTML = micIcon() + "开始录音";
+  }
+  if (btnPause) {
+    btnPause.disabled = false;
+    btnPause.textContent = "暂停";
+  }
+  if (btnStop) {
+    btnStop.disabled = true;
+    btnStop.textContent = "结束";
+  }
+  if (liveTag) liveTag.textContent = "实时";
+  setRecTab("transcript");
 }
 
 function micIcon() {
   return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3.5"/></svg>`;
 }
 
-function renderWave() {
-  recWave.classList.toggle("is-idle", !rec.active);
-  recWave.innerHTML = rec.bars
-    .map((v) => `<i style="height:${Math.max(3, Math.round(v * 34))}px"></i>`)
+/* ---------- 时钟与时间轴 ---------- */
+
+function updateClock() {
+  if (!recTimer) return;
+  recTimer.textContent = formatDuration(rec.audioMs / 1000);
+  recFoot.textContent = `已转写 ${formatDuration((rec.lastFinalMs || 0) / 1000)} / 已录 ${formatDuration(rec.audioMs / 1000)}`;
+  updatePlayhead();
+}
+
+function timelineWindow() {
+  const total = Math.max(TIMELINE_SPAN_MS, rec.audioMs + 1000);
+  if (total <= TIMELINE_SPAN_MS) return { start: 0, end: TIMELINE_SPAN_MS };
+  return { start: total - TIMELINE_SPAN_MS, end: total };
+}
+
+function updatePlayhead() {
+  if (!recPlayhead) return;
+  const { start, end } = timelineWindow();
+  const pct = Math.max(0, Math.min(100, ((rec.audioMs - start) / (end - start)) * 100));
+  recPlayhead.style.left = pct + "%";
+}
+
+function pushLevel(rms) {
+  const i = Math.floor(rec.audioMs / WAVE_BUCKET_MS);
+  const v = Math.min(1, rms * 7);
+  rec.wave[i] = Math.max(rec.wave[i] || 0, v);
+}
+
+function drawTimeline() {
+  if (!recCanvas || recWorkspace.hidden) return;
+  const rect = recCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+  if (recCanvas.width !== w * dpr || recCanvas.height !== h * dpr) {
+    recCanvas.width = w * dpr;
+    recCanvas.height = h * dpr;
+  }
+
+  const ctx = recCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const { start, end } = timelineWindow();
+  const span = Math.max(1, end - start);
+
+  // 分钟刻度
+  ctx.strokeStyle = "#e4e0d6";
+  ctx.lineWidth = 1;
+  const firstTick = Math.ceil(start / 60000) * 60000;
+  for (let t = firstTick; t < end; t += 60000) {
+    const x = Math.round(((t - start) / span) * w) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+
+  // 波形：2 秒一柱
+  const first = Math.floor(start / WAVE_BUCKET_MS);
+  const last = Math.ceil(end / WAVE_BUCKET_MS);
+  const bw = Math.max(1.5, w / (span / WAVE_BUCKET_MS) - 1);
+  ctx.fillStyle = "#d84a35";
+  ctx.globalAlpha = 0.5;
+  for (let i = first; i <= last; i++) {
+    const v = rec.wave[i] || 0;
+    if (!v) continue;
+    const x = ((i * WAVE_BUCKET_MS - start) / span) * w;
+    const bh = Math.max(2, v * (h - 6));
+    ctx.fillRect(x, (h - bh) / 2, bw, bh);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let drawTimer = null;
+function scheduleDraw() {
+  if (drawTimer) return;
+  drawTimer = requestAnimationFrame(() => {
+    drawTimer = null;
+    drawTimeline();
+  });
+}
+
+function renderPins() {
+  if (!recPins) return;
+  const { start, end } = timelineWindow();
+  recPins.innerHTML = rec.marks
+    .filter((m) => m.startMs >= start && m.startMs <= end)
+    .map((m) => {
+      const pct = ((m.startMs - start) / (end - start)) * 100;
+      return `<button class="rec-pin" style="left:${pct}%" data-id="${escapeAttr(m.id)}"
+        title="${escapeAttr(m.text.slice(0, 60))}" aria-label="标记：${escapeAttr(m.text.slice(0, 30))}"></button>`;
+    })
     .join("");
 }
 
-function pushBar(rms) {
-  rec.bars.push(Math.min(1, rms * 7));
-  rec.bars.shift();
-  renderWave();
-}
-
-function updateTimer() {
-  recTimer.textContent = formatDuration(rec.audioMs / 1000);
-}
+/* ---------- 录音主流程 ---------- */
 
 async function startRecording() {
   if (rec.active) return;
   btnMic.disabled = true;
   btnMic.textContent = "正在连接…";
-  recHint.hidden = true;
+  rec.finalizing = false;
+  rec.afterStopGoHome = false;
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -1163,38 +1637,48 @@ async function startRecording() {
     rec.ws = ws;
 
     await new Promise((resolve, reject) => {
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "start", language: language.value, output: state.output }));
-        resolve();
-      };
+      ws.onopen = () => resolve();
       ws.onerror = () => reject(new Error("无法连接转写服务"));
     });
 
     ws.onmessage = onRecMessage;
     ws.onclose = () => {
       if (rec.active && !rec.finalizing) {
-        recStatus.textContent = "连接已断开";
-        recDot.className = "rec-dot is-error";
         stopAudioGraph();
         rec.active = false;
+        showError("转写连接已断开，本次录音已中断");
+        resetRec();
+        showIdle();
       }
     };
 
+    // 必须在 start 之前挂好 onmessage：started 是紧接着下发的
+    ws.send(JSON.stringify({ type: "start", language: language.value, output: state.output }));
+
+    // 先置 active，避免音频图刚连上时的头几帧被丢掉
+    rec.active = true;
     await startAudioGraph();
 
-    rec.active = true;
-    recMicWrap.hidden = true;
-    recActions.hidden = false;
-    recSubCard.hidden = false;
-    recStatus.textContent = "录音中";
-    recDot.className = "rec-dot is-live";
+    // 连接可能在建图期间就断了，别再切到工作台
+    if (!rec.active) return;
+
+    showWorkspace();
     btnStop.disabled = false;
     btnPause.disabled = false;
+    recStatus.textContent = "连接中";
+    recDot.className = "rec-dot is-idle";
+
+    clearInterval(rec.ticker);
+    rec.ticker = setInterval(() => {
+      updateClock();
+      scheduleDraw();
+    }, 500);
+    updateClock();
   } catch (e) {
     showError(e.message || "无法启动录音");
+    rec.active = false;
     btnMic.disabled = false;
     btnMic.textContent = "重新请求麦克风";
-    recMicWrap.hidden = false;
     stopAudioGraph();
   }
 }
@@ -1266,60 +1750,13 @@ function handlePcm(buffer) {
     const v = pcm[i] / 32768;
     sum += v * v;
   }
-  pushBar(Math.sqrt(sum / Math.max(1, pcm.length / 8)));
+  pushLevel(Math.sqrt(sum / Math.max(1, pcm.length / 8)));
 
   if (rec.ws && rec.ws.readyState === WebSocket.OPEN) {
     rec.ws.send(buffer);
   }
   rec.audioMs += 100;
-  updateTimer();
-}
-
-function onRecMessage(ev) {
-  let msg;
-  try { msg = JSON.parse(ev.data); } catch { return; }
-
-  if (msg.type === "ready") {
-    recStatus.textContent = "录音中";
-    recDot.className = "rec-dot is-live";
-    return;
-  }
-  if (msg.type === "paused") {
-    recStatus.textContent = "已暂停";
-    recDot.className = "rec-dot is-idle";
-    return;
-  }
-  if (msg.type === "resumed") {
-    recStatus.textContent = "录音中";
-    recDot.className = "rec-dot is-live";
-    return;
-  }
-  if (msg.type === "sentence") {
-    rec.sentences.set(msg.id ?? `s${msg.startMs}`, msg);
-    renderSubs();
-    return;
-  }
-  if (msg.type === "error") {
-    showError(msg.message);
-    return;
-  }
-  if (msg.type === "done") {
-    finishRecordingFlow(msg);
-  }
-}
-
-function renderSubs() {
-  const list = [...rec.sentences.values()].sort((a, b) => a.startMs - b.startMs);
-  if (!list.length) return;
-  recSubs.innerHTML = list
-    .map(
-      (s) => `<p class="sub-line ${s.final ? "" : "is-partial"}">
-        <span class="sub-ts">${formatDuration(s.startMs / 1000)}</span>
-        <span class="sub-text">${escapeHtml(s.text)}</span>
-      </p>`
-    )
-    .join("");
-  recSubs.scrollTop = recSubs.scrollHeight;
+  updateClock();
 }
 
 function stopAudioGraph() {
@@ -1332,6 +1769,404 @@ function stopAudioGraph() {
   rec.stream = null;
   rec.ctx = null;
 }
+
+function onRecMessage(ev) {
+  let msg;
+  try { msg = JSON.parse(ev.data); } catch { return; }
+
+  if (msg.type === "started") {
+    rec.jobId = msg.jobId;
+    restoreLocalMarks(msg.jobId);
+    return;
+  }
+  if (msg.type === "ready") {
+    syncClock(msg.audioMs);
+    recStatus.textContent = "录音中";
+    recDot.className = "rec-dot is-live";
+    return;
+  }
+  if (msg.type === "paused") {
+    syncClock(msg.audioMs);
+    recStatus.textContent = "已暂停";
+    recDot.className = "rec-dot is-idle";
+    return;
+  }
+  if (msg.type === "resumed") {
+    syncClock(msg.audioMs);
+    recStatus.textContent = "录音中";
+    recDot.className = "rec-dot is-live";
+    return;
+  }
+  if (msg.type === "sentence") {
+    upsertSentence(msg);
+    return;
+  }
+  if (msg.type === "marker-ack") {
+    const m = rec.marks.find((x) => x.id === msg.id);
+    if (m) m.synced = true;
+    persistLocalMarks();
+    return;
+  }
+  if (msg.type === "marker-nack") {
+    showError(`标记未能保存：${msg.message || "未知原因"}`);
+    return;
+  }
+  if (msg.type === "error") {
+    showError(msg.message);
+    return;
+  }
+  if (msg.type === "done") {
+    finishRecordingFlow(msg);
+  }
+}
+
+/**
+ * 服务端时钟与本地偏差过大时校正，只影响此后的标记，已提交的不回改。
+ * 阈值取 200ms：暂停时服务端会补 0.5s 静音来促使断句，那 500ms 必须被吸收，
+ * 否则暂停一次，之后所有标记都会比字幕早半秒。
+ */
+function syncClock(serverMs) {
+  const v = Number(serverMs);
+  if (!Number.isFinite(v)) return;
+  if (Math.abs(v - rec.audioMs) > 200) {
+    rec.audioMs = v;
+    updateClock();
+  }
+}
+
+function upsertSentence(msg) {
+  const key = String(msg.id ?? `s${msg.startMs}`);
+  rec.sentences.set(key, msg);
+
+  let el = rec.nodes.get(key);
+  if (!el) {
+    el = document.createElement("p");
+    el.className = "sub-line";
+    el.innerHTML = `<span class="sub-ts"></span><span class="sub-text"></span>`;
+    rec.nodes.set(key, el);
+    const empty = recSubs.querySelector(".sub-empty");
+    if (empty) empty.remove();
+    recSubs.appendChild(el);
+  }
+  el.dataset.ms = msg.startMs;
+  el.classList.toggle("is-partial", !msg.final);
+  el.querySelector(".sub-ts").textContent = formatFrac(msg.startMs / 1000);
+  el.querySelector(".sub-text").textContent = msg.text;
+
+  if (msg.final) {
+    rec.lastFinalMs = Math.max(rec.lastFinalMs, msg.endMs || msg.startMs);
+    recLive.textContent = "新增一句";
+    rec.wordCount = 0;
+    for (const s of rec.sentences.values()) {
+      if (s.final) rec.wordCount += (s.text || "").replace(/\s/g, "").length;
+    }
+    recWordCount.textContent = `${rec.wordCount} 字`;
+    updateClock();
+  }
+
+  if (rec.follow) recSubs.scrollTop = recSubs.scrollHeight;
+}
+
+/* ---------- 标记 ---------- */
+
+function noteBeginIfNeeded() {
+  if (rec.draft.active || !rec.active || rec.finalizing) return;
+  rec.draft.active = true;
+  rec.draft.startMs = Math.round(rec.audioMs);
+  rec.draft.startedAt = Date.now();
+  rec.draft.text = "";
+  composerStatus.hidden = false;
+  composerStart.textContent = `开始于 ${formatFrac(rec.draft.startMs / 1000)}`;
+  updateElapsed();
+  clearInterval(rec.elapsedTicker);
+  rec.elapsedTicker = setInterval(updateElapsed, 500);
+}
+
+function updateElapsed() {
+  if (!rec.draft.active) return;
+  const sec = Math.max(0, Math.round((Date.now() - rec.draft.startedAt) / 1000));
+  composerElapsed.textContent = `已 ${sec} 秒`;
+}
+
+function resetDraft() {
+  rec.draft.active = false;
+  rec.draft.startMs = 0;
+  rec.draft.startedAt = 0;
+  rec.draft.text = "";
+  clearInterval(rec.elapsedTicker);
+  rec.elapsedTicker = null;
+  if (composerStatus) composerStatus.hidden = true;
+  if (noteInput) noteInput.value = "";
+  if (noteCount) noteCount.textContent = "0/2000";
+}
+
+function clearDraftInput() {
+  const hasText = noteInput.value.trim().length > 0;
+  if (!hasText) return resetDraft();
+  confirmDialog({
+    title: "清空这条标记",
+    body: "当前输入的内容会丢失，确定清空吗？",
+    okText: "清空",
+  }).then((ok) => {
+    if (ok) resetDraft();
+    else noteInput.focus();
+  });
+}
+
+function submitNote({ silent = false } = {}) {
+  if (!rec.draft.active) return false;
+  const text = noteInput.value.trim();
+  if (!text) {
+    if (!silent) {
+      noteInput.classList.remove("is-shake");
+      void noteInput.offsetWidth;
+      noteInput.classList.add("is-shake");
+      showError("先写点什么再回车");
+    }
+    return false;
+  }
+
+  const mark = {
+    id: "mk_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36),
+    startMs: rec.draft.startMs,
+    endMs: Math.round(rec.audioMs),
+    text,
+    duringPause: rec.paused,
+    createdAt: Date.now(),
+    seq: rec.seq++,
+    synced: false,
+  };
+  rec.marks.push(mark);
+
+  sendMark(mark);
+  persistLocalMarks();
+
+  resetDraft();
+  renderNotes();
+  renderPins();
+  scrollNotesToBottom();
+  return true;
+}
+
+function sendMark(mark) {
+  if (!rec.ws || rec.ws.readyState !== WebSocket.OPEN) return;
+  rec.ws.send(JSON.stringify({
+    type: "mark",
+    id: mark.id,
+    startMs: mark.startMs,
+    endMs: mark.endMs,
+    text: mark.text,
+    duringPause: mark.duringPause,
+    seq: mark.seq,
+  }));
+}
+
+function deleteMark(id) {
+  const idx = rec.marks.findIndex((m) => m.id === id);
+  if (idx < 0) return;
+  rec.marks.splice(idx, 1);
+  if (rec.ws && rec.ws.readyState === WebSocket.OPEN) {
+    rec.ws.send(JSON.stringify({ type: "mark-delete", id }));
+  }
+  persistLocalMarks();
+  renderNotes();
+  renderPins();
+}
+
+function renderNotes() {
+  if (!noteList) return;
+  const items = rec.marks.slice().sort((a, b) => a.startMs - b.startMs || a.seq - b.seq);
+  markCount.textContent = `${items.length} 条`;
+  if (tabMarkCount) tabMarkCount.textContent = items.length ? String(items.length) : "";
+
+  if (!items.length) {
+    noteList.innerHTML = `<p class="note-empty" id="noteEmpty">会议中随时记下要点，回车即存。时间点会自动对齐到录音。</p>`;
+    return;
+  }
+
+  noteList.innerHTML = items
+    .map(
+      (m) => `<article class="note-card" data-id="${escapeAttr(m.id)}">
+        <div class="note-head">
+          <button class="note-ts" data-ms="${m.startMs}" title="点击定位到这段字幕">${formatFrac(m.startMs / 1000)}</button>
+          ${m.duringPause ? `<span class="note-flag">暂停中</span>` : ""}
+          <span class="note-actions">
+            <button class="note-act" data-act="edit" type="button">编辑</button>
+            <button class="note-act is-danger" data-act="del" type="button">删除</button>
+          </span>
+        </div>
+        <p class="note-text">${escapeHtml(m.text)}</p>
+      </article>`
+    )
+    .join("");
+}
+
+function scrollNotesToBottom() {
+  noteList.scrollTop = noteList.scrollHeight;
+}
+
+function startEditNote(card) {
+  const id = card.dataset.id;
+  const mark = rec.marks.find((m) => m.id === id);
+  if (!mark) return;
+  const textEl = card.querySelector(".note-text");
+  const ta = document.createElement("textarea");
+  ta.className = "note-edit";
+  ta.value = mark.text;
+  ta.rows = 2;
+  textEl.replaceWith(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+
+  let settled = false;
+  const finish = (save) => {
+    if (settled) return;
+    settled = true;
+    const value = ta.value.trim();
+    if (save && value && value !== mark.text) {
+      mark.text = value;
+      sendMark(mark);
+      persistLocalMarks();
+    }
+    renderNotes();
+    renderPins();
+  };
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    else if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); finish(true); }
+  });
+  ta.addEventListener("blur", () => finish(true));
+}
+
+/* ---------- 本地恢复 ---------- */
+
+const PENDING_MARKS_KEY = "vs.marks.pending";
+
+function marksKey(jobId) {
+  return `vs.marks.${jobId || "pending"}`;
+}
+
+/**
+ * 双写：jobId 未知（started 还没到）时先写 pending，
+ * 拿到 jobId 后写自己的键。避免把上一场会议的标记错挂到这一场。
+ */
+function persistLocalMarks() {
+  try {
+    const data = JSON.stringify(rec.marks.map((m) => ({
+      id: m.id, startMs: m.startMs, endMs: m.endMs, text: m.text,
+      duringPause: m.duringPause, createdAt: m.createdAt, seq: m.seq,
+    })));
+    localStorage.setItem(rec.jobId ? marksKey(rec.jobId) : PENDING_MARKS_KEY, data);
+  } catch {}
+}
+
+function clearLocalMarks() {
+  try {
+    if (rec.jobId) localStorage.removeItem(marksKey(rec.jobId));
+    localStorage.removeItem(PENDING_MARKS_KEY);
+  } catch {}
+}
+
+/** 把 started 之前输入的标记并入当前会话，并补发一次 */
+function restoreLocalMarks(jobId) {
+  let stored = [];
+  try {
+    stored = JSON.parse(localStorage.getItem(PENDING_MARKS_KEY) || "[]");
+  } catch { stored = []; }
+
+  const pending = (Array.isArray(stored) ? stored : []).filter(
+    (m) => m && m.id && !rec.marks.some((x) => x.id === m.id)
+  );
+  if (!pending.length) return;
+
+  for (const m of pending) {
+    const mark = { ...m, synced: false };
+    rec.marks.push(mark);
+    sendMark(mark);
+  }
+  try { localStorage.removeItem(PENDING_MARKS_KEY); } catch {}
+  persistLocalMarks();
+  renderNotes();
+  renderPins();
+  showError(`已恢复 ${pending.length} 条开始录音前输入的标记`);
+}
+
+/* ---------- 结束 ---------- */
+
+async function stopRecording(goHome = false) {
+  if (!rec.active || !rec.ws) return;
+  if (rec.audioMs < 1000) {
+    showError("录音不足 1 秒，再录一会儿吧");
+    return;
+  }
+  rec.finalizing = true;
+  rec.afterStopGoHome = goHome;
+  btnStop.disabled = true;
+  btnPause.disabled = true;
+  btnStop.textContent = "正在收尾…";
+  recStatus.textContent = "正在生成终稿";
+  recDot.className = "rec-dot is-live";
+
+  submitNote({ silent: true });
+  stopAudioGraph();
+  rec.active = false;
+
+  try {
+    rec.ws.send(JSON.stringify({ type: "stop" }));
+  } catch {}
+
+  clearTimeout(rec.stopTimer);
+  rec.stopTimer = setTimeout(() => {
+    if (!rec.finalizing) return;
+    rec.finalizing = false;
+    showError("收尾超时，已保存已转写内容");
+    finishRecordingFlow(null);
+  }, 20000);
+}
+
+async function finishRecordingFlow(msg) {
+  rec.finalizing = false;
+  clearTimeout(rec.stopTimer);
+  rec.stopTimer = null;
+  clearInterval(rec.ticker);
+  rec.ticker = null;
+
+  try { rec.ws && rec.ws.close(); } catch {}
+  rec.ws = null;
+
+  if (!msg || !msg.recordId) {
+    showError("没有识别到语音内容，本次录音未保存");
+    clearLocalMarks();
+    resetRec();
+    showIdle();
+    return;
+  }
+
+  clearLocalMarks();
+
+  if (rec.afterStopGoHome) {
+    resetRec();
+    showIdle();
+    switchView("home");
+    fetchRecords();
+    return;
+  }
+
+  await openDetail({ jobId: msg.jobId, recordId: msg.recordId });
+  // 录音场景默认结束即出纪要，用户不用再点一次
+  if (state.output === "summary" && state.job && !state.record?.summaryJson) {
+    generateSummary();
+  }
+}
+
+/* ---------- 交互绑定 ---------- */
+
+$("#btnBackRecIdle").addEventListener("click", () => {
+  switchView("home");
+});
+
+const recDiarLock = $("#recDiarLock");
+if (recDiarLock) recDiarLock.addEventListener("click", () => openModal("recDiarization"));
 
 btnMic.addEventListener("click", startRecording);
 
@@ -1350,53 +2185,136 @@ btnPause.addEventListener("click", () => {
     recStatus.textContent = "录音中";
     recDot.className = "rec-dot is-live";
   }
+  noteInput.focus({ preventScroll: true });
 });
 
-btnStop.addEventListener("click", () => {
-  if (!rec.active || !rec.ws) return;
-  if (rec.audioMs < 1000) {
-    showError("录音不足 1 秒，再录一会儿吧");
-    return;
-  }
-  rec.finalizing = true;
-  btnStop.disabled = true;
-  btnPause.disabled = true;
-  btnStop.textContent = "正在收尾…";
-  recStatus.textContent = "正在生成终稿";
-  recDot.className = "rec-dot is-live";
-  stopAudioGraph();
-  rec.active = false;
-  rec.ws.send(JSON.stringify({ type: "stop" }));
+btnStop.addEventListener("click", () => stopRecording(false));
+
+recSubs.addEventListener("scroll", () => {
+  const nearBottom = recSubs.scrollHeight - recSubs.scrollTop - recSubs.clientHeight < 40;
+  rec.follow = nearBottom;
 });
 
-async function finishRecordingFlow(msg) {
-  try { rec.ws && rec.ws.close(); } catch {}
-  rec.ws = null;
-  btnStop.textContent = "结束并生成纪要";
+noteInput.addEventListener("compositionstart", noteBeginIfNeeded);
+noteInput.addEventListener("paste", noteBeginIfNeeded);
+noteInput.addEventListener("input", () => {
+  noteBeginIfNeeded();
+  rec.draft.text = noteInput.value;
+  noteCount.textContent = `${noteInput.value.length}/2000`;
+});
+noteInput.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.keyCode === 229) return;
 
-  if (!msg.recordId) {
-    showError("没有识别到语音内容，本次录音未保存");
-    resetRec();
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    submitNote();
     return;
   }
-
-  await openDetail({ jobId: msg.jobId, recordId: msg.recordId });
-  // 录音场景默认结束即出纪要，直接在这里触发，用户不用再点一次
-  if (state.output === "summary" && state.job && !state.record?.summaryJson) {
-    generateSummary();
+  if (e.key === "Escape") {
+    e.preventDefault();
+    clearDraftInput();
+    return;
   }
+  if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    noteBeginIfNeeded();
+  }
+});
+
+// 焦点不在输入框时，直接敲字也能开始记（字符要手动补进去，focus 是同步切的）
+document.addEventListener("keydown", (e) => {
+  if (recWorkspace.hidden) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key.length !== 1) return;
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+
+  e.preventDefault();
+  noteInput.focus({ preventScroll: true });
+  noteBeginIfNeeded();
+
+  const start = noteInput.selectionStart ?? noteInput.value.length;
+  const end = noteInput.selectionEnd ?? start;
+  if (noteInput.value.length >= 2000) return;
+  noteInput.value = noteInput.value.slice(0, start) + e.key + noteInput.value.slice(end);
+  noteInput.selectionStart = noteInput.selectionEnd = start + e.key.length;
+  rec.draft.text = noteInput.value;
+  noteCount.textContent = `${noteInput.value.length}/2000`;
+});
+
+noteList.addEventListener("click", (e) => {
+  const ts = e.target.closest(".note-ts");
+  if (ts) return scrollTranscriptTo(Number(ts.dataset.ms));
+
+  const card = e.target.closest(".note-card");
+  if (!card) return;
+  const act = e.target.closest(".note-act");
+  if (!act) return;
+
+  if (act.dataset.act === "edit") return startEditNote(card);
+  if (act.dataset.act === "del") {
+    const mark = rec.marks.find((m) => m.id === card.dataset.id);
+    confirmDialog({
+      title: "删除标记",
+      body: `确定删除这条标记吗？\n\n${mark?.text || ""}`,
+      okText: "删除",
+    }).then((ok) => { if (ok) deleteMark(card.dataset.id); });
+  }
+});
+
+recPins.addEventListener("click", (e) => {
+  const pin = e.target.closest(".rec-pin");
+  if (!pin) return;
+  const card = noteList.querySelector(`.note-card[data-id="${pin.dataset.id}"]`);
+  if (!card) return;
+  card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  card.classList.add("is-hit");
+  setTimeout(() => card.classList.remove("is-hit"), 900);
+});
+
+function scrollTranscriptTo(ms) {
+  let best = null;
+  for (const el of rec.nodes.values()) {
+    const v = Number(el.dataset.ms);
+    if (v <= ms) best = el;
+    else break;
+  }
+  if (!best) return;
+  best.scrollIntoView({ block: "center", behavior: "smooth" });
+  best.classList.add("is-hit");
+  setTimeout(() => best.classList.remove("is-hit"), 900);
 }
 
-$("#btnBackRec").addEventListener("click", () => {
-  if (rec.active) {
-    if (!confirm("录音还在进行，确定离开吗？已录内容会丢失。")) return;
-  }
-  try { rec.ws && rec.ws.close(); } catch {}
-  stopAudioGraph();
-  resetRec();
-  switchView("home");
-  fetchRecords();
+$("#recTabs").addEventListener("click", (e) => {
+  const tab = e.target.closest(".rec-tab");
+  if (tab) setRecTab(tab.dataset.panel);
 });
+
+function setRecTab(panel) {
+  $$(".rec-tab").forEach((b) => b.classList.toggle("active", b.dataset.panel === panel));
+  const body = $("#recBody");
+  if (!body) return;
+  body.dataset.mobilePanel = panel;
+}
+
+// 录音中离开首页链接：先收尾保存，不要静默丢弃
+$("#brandHome").addEventListener(
+  "click",
+  (e) => {
+    if (!rec.active) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    confirmDialog({
+      title: "结束录音",
+      body: "录音还在进行。离开会结束本次录音，已转写的内容与标记会保存。",
+      okText: "结束并离开",
+    }).then((ok) => {
+      if (ok) stopRecording(true);
+    });
+  },
+  true
+);
+
+window.addEventListener("resize", () => scheduleDraw());
 
 /* ---------------- 初始化 ---------------- */
 

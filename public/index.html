@@ -150,15 +150,28 @@
           </div>
         </div>
 
-        <!-- 占位入口：功能未开放，但卡片本身可操作（点击说明原因） -->
-        <div class="opt-card is-locked" id="diarizationCard" role="button" tabindex="0"
-             aria-label="区分说话人，功能开发中，点击了解详情" aria-describedby="diarTips">
+        <!-- 区分说话人：开启后走离线分离通道（filetrans），关闭走 MIMO -->
+        <div class="opt-card" id="diarizationCard" role="button" tabindex="0"
+             aria-pressed="false" aria-label="区分说话人">
           <div class="opt-head">
             <span class="opt-title">区分说话人</span>
-            <span class="badge-soon">开发中</span>
-            <span class="switch is-off" aria-hidden="true"><i></i></span>
+            <span class="switch is-off" id="diarSwitch" aria-hidden="true"><i></i></span>
           </div>
-          <p class="opt-sub" id="diarTips">自动标出每句话由谁说出，后续版本开放</p>
+          <p class="opt-sub" id="diarTips">自动标出每句话由谁说出。开启后走离线分离，处理时间略长</p>
+          <div class="opt-extra" id="diarExtra" hidden>
+            <label class="opt-field">
+              <span>参会人数</span>
+              <select id="speakerCount">
+                <option value="">自动判断</option>
+                <option value="2">2 人</option>
+                <option value="3">3 人</option>
+                <option value="4">4 人</option>
+                <option value="5">5 人</option>
+                <option value="6">6 人及以上</option>
+              </select>
+            </label>
+            <p class="opt-note" id="diarNote">人数只是提示，实际由模型判断；开启后音频上限 2 小时</p>
+          </div>
         </div>
 
         <div class="field">
@@ -190,49 +203,109 @@
     </main>
 
     <!-- ======= 视图：录音 ======= -->
-    <main id="viewRec" class="view view-narrow" hidden>
-      <div class="view-head">
-        <button class="btn btn-back" id="btnBackRec">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
-          返回
-        </button>
-        <h2 class="view-title">实时录音</h2>
-      </div>
+    <main id="viewRec" class="view view-rec" hidden>
 
-      <section class="card rec-card">
-        <div class="rec-status">
-          <span class="rec-dot" id="recDot"></span>
-          <span id="recStatus">未开始</span>
+      <!-- 预录态 -->
+      <section class="rec-idle" id="recIdle">
+        <div class="view-head">
+          <button class="btn btn-back" id="btnBackRecIdle">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
+            返回
+          </button>
+          <h2 class="view-title">实时录音</h2>
         </div>
-        <div class="rec-timer" id="recTimer">00:00</div>
-        <div class="rec-wave" id="recWave" aria-hidden="true"></div>
 
-        <div class="rec-hint" id="recHint">点击开始后会请求麦克风权限，音频边录边转</div>
-
-        <div class="rec-mic" id="recMicWrap">
+        <div class="rec-idle-card">
+          <p class="rec-idle-lead">边开边转，随时记要点。结束后自动生成纪要。</p>
+          <div class="rec-level" id="recLevel" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
           <button class="btn btn-rec" id="btnMic">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3.5"/>
             </svg>
             开始录音
           </button>
+          <p class="rec-hint" id="recHint">点击开始后会请求麦克风权限，音频边录边转</p>
+
+          <button class="opt-card is-locked rec-diar-lock" id="recDiarLock" type="button"
+                  aria-label="区分说话人，实时录音暂不支持，点击了解详情">
+            <span class="opt-head">
+              <span class="opt-title">区分说话人</span>
+              <span class="badge-soon">实时暂不支持</span>
+              <span class="switch is-off" aria-hidden="true"><i></i></span>
+            </span>
+            <span class="opt-sub">录音只出字幕与标记；需要分离可结束后把同一段音频上传处理</span>
+          </button>
         </div>
       </section>
 
-      <section class="card sub-card" id="recSubCard" hidden>
-        <div class="card-head">
-          <span class="card-label">实时字幕</span>
-          <span class="live-tag" id="liveTag">识别中</span>
-        </div>
-        <div class="sub-list" id="recSubs">
-          <p class="sub-empty">开始说话，字幕会出现在这里</p>
-        </div>
-      </section>
+      <!-- 录音工作台：三区 -->
+      <section class="rec-workspace" id="recWorkspace" hidden>
+        <header class="rec-top">
+          <div class="rec-top-status">
+            <span class="rec-dot" id="recDot"></span>
+            <span class="rec-status-text" id="recStatus">连接中</span>
+            <span class="rec-clock" id="recTimer">00:00</span>
+          </div>
 
-      <div class="rec-actions" id="recActions" hidden>
-        <button class="btn btn-pause" id="btnPause">暂停</button>
-        <button class="btn btn-primary btn-stop" id="btnStop">结束并生成纪要</button>
-      </div>
+          <div class="rec-timeline" id="recTimeline" aria-hidden="true">
+            <canvas id="recCanvas"></canvas>
+            <div class="rec-pins" id="recPins"></div>
+            <div class="rec-playhead" id="recPlayhead"></div>
+            <div class="rec-tip" id="recTip" hidden></div>
+          </div>
+
+          <div class="rec-top-actions">
+            <button class="btn btn-pause" id="btnPause">暂停</button>
+            <button class="btn btn-primary btn-stop" id="btnStop">结束</button>
+          </div>
+        </header>
+
+        <div class="rec-mobile-tabs" id="recTabs" role="tablist">
+          <button class="rec-tab active" data-panel="transcript" role="tab">实时转写</button>
+          <button class="rec-tab" data-panel="notes" role="tab">我的标记 <span id="tabMarkCount"></span></button>
+        </div>
+
+        <div class="rec-body" id="recBody">
+          <section class="panel rec-transcript" id="panelTranscript">
+            <div class="panel-head">
+              <span class="panel-title">实时转写</span>
+              <span class="live-tag" id="liveTag">实时</span>
+              <span class="panel-meta" id="recWordCount">0 字</span>
+            </div>
+            <div class="sub-list" id="recSubs">
+              <p class="sub-empty">开始说话，字幕会出现在这里</p>
+            </div>
+            <div class="panel-foot" id="recFoot">已转写 00:00 / 已录 00:00</div>
+          </section>
+
+          <section class="panel rec-notes" id="panelNotes">
+            <div class="panel-head">
+              <span class="panel-title">我的标记</span>
+              <span class="panel-meta" id="markCount">0 条</span>
+            </div>
+            <div class="note-list" id="noteList">
+              <p class="note-empty" id="noteEmpty">会议中随时记下要点，回车即存。时间点会自动对齐到录音。</p>
+            </div>
+            <div class="note-composer" id="noteComposer">
+              <div class="composer-status" id="composerStatus" hidden>
+                <span class="composer-dot"></span>
+                <span id="composerStart">开始于 00:00</span>
+                <span class="composer-elapsed" id="composerElapsed">已 0 秒</span>
+              </div>
+              <textarea id="noteInput" rows="3" maxlength="2000"
+                        placeholder="记下要点，回车提交（Shift+回车换行）"></textarea>
+              <div class="composer-foot">
+                <span class="composer-hint">Enter 提交 · Shift+Enter 换行 · Esc 清空</span>
+                <span id="noteCount">0/2000</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="sr-only" role="status" aria-live="polite" id="recLive"></div>
+      </section>
     </main>
 
     <!-- ======= 视图：详情 ======= -->
@@ -258,6 +331,7 @@
 
       <div class="detail-meta" id="detailMeta"></div>
       <div class="job-banner" id="jobBanner" hidden></div>
+      <div class="job-banner is-warn" id="diarizeBanner" hidden></div>
 
       <div class="player-bar" id="playerBar" hidden>
         <audio id="player" controls preload="metadata"></audio>

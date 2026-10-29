@@ -8,12 +8,13 @@ const fs = require("node:fs");
 const crypto = require("node:crypto");
 
 const {
+  db,
   createRecord, listRecords, getRecord, updateRecord, deleteRecord, deleteRecords,
-  createJob, getJob, updateJob, markInterruptedJobs,
-  listSegments,
+  createJob, getJob, updateJob, markInterruptedJobs, listRunningRecordingJobs,
+  listSegments, listMarkers, listSpeakers, renameSpeaker, deleteMarker,
 } = require("./server/db");
 const { probe } = require("./server/audio");
-const { enqueue, cancel, detectSourceType, JOBS_DIR } = require("./server/jobs");
+const { enqueue, cancel, detectSourceType, JOBS_DIR, MAX_DIARIZE_SEC } = require("./server/jobs");
 const { generateSummary } = require("./server/summary");
 const { attachRealtime } = require("./server/realtime");
 
@@ -74,6 +75,8 @@ app.post("/api/jobs", upload.single("file"), async (req, res) => {
   const filename = decodeFilename(file.originalname);
   const output = req.body.output === "transcript" ? "transcript" : "summary";
   const language = req.body.language || "auto";
+  const diarize = req.body.diarize === "true" || req.body.diarize === true;
+  const speakerCount = Number(req.body.speakerCount) || null;
 
   try {
     // 同步探测：时长超限要立刻拒绝，而不是等任务跑到一半才失败
@@ -90,6 +93,14 @@ app.post("/api/jobs", upload.single("file"), async (req, res) => {
       fs.unlinkSync(srcPath);
       return res.status(400).json({ success: false, error: "音频时长不足 1 秒，无法转写" });
     }
+    // 开启分离后官方建议 ≤2h，宁可前置拦截，也别让用户等十分钟再失败
+    if (diarize && meta.durationSec > MAX_DIARIZE_SEC) {
+      fs.unlinkSync(srcPath);
+      return res.status(400).json({
+        success: false,
+        error: "开启说话人分离时音频上限 2 小时，请先裁剪或关闭开关",
+      });
+    }
 
     const job = createJob({
       sourceType: detectSourceType(filename),
@@ -99,7 +110,8 @@ app.post("/api/jobs", upload.single("file"), async (req, res) => {
       durationMs: Math.round(meta.durationSec * 1000),
       output,
       language,
-      engine: "mimo",
+      engine: diarize ? "bailian_filetrans" : "mimo",
+      options: { diarize, speakerCount: diarize ? speakerCount : null },
     });
 
     // 源文件搬进任务目录，便于按任务清理与回放
@@ -132,6 +144,8 @@ app.get("/api/jobs/:id", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) return res.status(404).json({ success: false, error: "任务不存在" });
   const segments = listSegments(job.id);
+  const markers = listMarkers(job.id);
+  const speakers = listSpeakers(job.id);
   const record = job.record_id ? getRecord(job.record_id) : null;
   res.json({
     success: true,
@@ -147,6 +161,9 @@ app.get("/api/jobs/:id", (req, res) => {
       error: job.error,
       output: job.output,
       recordId: job.record_id,
+      sourceType: job.source_type,
+      diarizeStatus: job.diarize_status || "off",
+      speakerCount: job.speaker_count || speakers.length || null,
     },
     segments: segments.map((s) => ({
       idx: s.idx,
@@ -155,6 +172,23 @@ app.get("/api/jobs/:id", (req, res) => {
       text: s.text || "",
       engine: s.engine,
       status: s.status,
+      speaker: s.speaker || null,
+      speakerLabel: s.speaker_label || null,
+    })),
+    markers: markers.map((m) => ({
+      id: m.id,
+      startMs: m.start_ms,
+      endMs: m.end_ms,
+      text: m.text,
+      duringPause: Boolean(m.during_pause),
+      createdAt: m.created_at,
+    })),
+    speakers: speakers.map((s) => ({
+      localId: s.local_id,
+      label: s.label,
+      color: s.color,
+      firstMs: s.first_ms,
+      talkMs: s.talk_ms,
     })),
     hasAudio: Boolean(job.audio_path && fs.existsSync(job.audio_path)),
     record: record
@@ -203,7 +237,9 @@ app.post("/api/jobs/:id/summary", async (req, res) => {
     return res.status(400).json({ success: false, error: "该任务还没有转写结果" });
   }
   try {
-    const { json, markdown } = await generateSummary(segments);
+    // 标记必须一起进纪要：它是用户当场认定的重点，不能被摘要流程丢掉
+    const markers = listMarkers(job.id);
+    const { json, markdown } = await generateSummary(segments, { markers });
     if (job.record_id) {
       updateRecord(job.record_id, {
         summary_json: JSON.stringify(json),
@@ -216,6 +252,63 @@ app.post("/api/jobs/:id/summary", async (req, res) => {
     console.error("生成纪要失败:", e);
     res.status(500).json({ success: false, error: e.message });
   }
+});
+
+/** 说话人重命名：同步更新段落的冗余显示名 */
+app.patch("/api/jobs/:id/speakers", (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ success: false, error: "任务不存在" });
+  const { localId, label } = req.body || {};
+  if (!localId || !String(label || "").trim()) {
+    return res.status(400).json({ success: false, error: "缺少说话人编号或名称" });
+  }
+  try {
+    const result = renameSpeaker(job.id, String(localId), String(label));
+    if (!result.changed) {
+      return res.status(404).json({ success: false, error: "说话人不存在" });
+    }
+    res.json({ success: true, speakers: result.speakers, needsSummary: true });
+  } catch (e) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+/** 删除单条标记（录音结束后的编辑） */
+app.delete("/api/jobs/:id/markers/:markerId", (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ success: false, error: "任务不存在" });
+  const ok = deleteMarker(req.params.markerId);
+  if (!ok) return res.status(404).json({ success: false, error: "标记不存在" });
+  res.json({ success: true });
+});
+
+/** 重新标注：对已有音频重跑一次离线分离 */
+app.post("/api/jobs/:id/diarize", (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ success: false, error: "任务不存在" });
+  if (job.status === "running" || job.status === "queued") {
+    return res.status(400).json({ success: false, error: "任务正在运行，无法重新标注" });
+  }
+  if (!job.audio_path || !fs.existsSync(job.audio_path)) {
+    return res.status(400).json({ success: false, error: "音频已不存在，无法重新标注" });
+  }
+  const speakerCount = Number(req.body?.speakerCount) || null;
+  const options = { diarize: true, speakerCount };
+  updateJob(job.id, {
+    status: "queued",
+    stage: "QUEUED",
+    progress: 0,
+    error: null,
+    engine: "bailian_filetrans",
+    diarize_status: "running",
+  });
+  try {
+    db.prepare("UPDATE jobs SET options_json = ? WHERE id = ?").run(
+      JSON.stringify(options), job.id
+    );
+  } catch {}
+  enqueue(job.id);
+  res.json({ success: true, jobId: job.id });
 });
 
 /** 播放器用：16k 单声道 wav，支持 Range 以便点时间戳跳转 */
@@ -343,10 +436,49 @@ app.use((err, req, res, next) => {
 const server = http.createServer(app);
 attachRealtime(server);
 
+// 重启意味着录音会话已死：先拿到名单，再标失败，最后清掉半截音频
+const runningRecordings = listRunningRecordingJobs();
 const interrupted = markInterruptedJobs();
+for (const job of runningRecordings) {
+  try {
+    fs.rmSync(path.join(JOBS_DIR, job.id), { recursive: true, force: true });
+  } catch {}
+}
 if (interrupted) {
   console.log(`发现 ${interrupted} 个上次未完成的任务，可在详情页点「继续处理」续跑`);
 }
+if (runningRecordings.length) {
+  console.log(`清理了 ${runningRecordings.length} 个中断的录音会话（半截音频已删除，标记保留）`);
+}
+
+/** 清理孤儿任务目录：无对应 job 行，或 7 天内没产生记录且已结束 */
+function cleanupOrphanJobs() {
+  let removed = 0;
+  let entries = [];
+  try {
+    entries = fs.readdirSync(JOBS_DIR, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(JOBS_DIR, entry.name);
+    const job = getJob(entry.name);
+    if (!job) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); removed++; } catch {}
+      continue;
+    }
+    const finished = ["done", "failed", "canceled"].includes(job.status);
+    const old = new Date(job.updated_at || job.created_at || 0).getTime() < cutoff;
+    if (finished && !job.record_id && old) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); removed++; } catch {}
+    }
+  }
+  return removed;
+}
+const orphans = cleanupOrphanJobs();
+if (orphans) console.log(`清理了 ${orphans} 个无用任务目录`);
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`服务器运行在 http://127.0.0.1:${PORT}`);
