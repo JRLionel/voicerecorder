@@ -305,7 +305,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 12px;
+  height: 36px;
+  padding: 0 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -318,6 +319,7 @@
 }
 .search-box input {
   width: 150px;
+  height: 100%;
   border: none;
   outline: none;
   background: transparent;
@@ -329,6 +331,8 @@
 
 .view-toggle {
   display: inline-flex;
+  align-items: center;
+  height: 36px;
   padding: 2px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -337,8 +341,8 @@
 .vt-btn {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -516,6 +520,8 @@
 .rec-src {
   display: inline-flex;
   align-items: center;
+  /* 胶囊按文字宽度收窄，不要被 grid 列拉成一条长条 */
+  justify-self: start;
   padding: 2px 9px;
   border-radius: 99px;
   font-family: var(--font);
@@ -677,7 +683,6 @@ body.has-sel .app { padding-bottom: 104px; }
   letter-spacing: 2px;
   color: var(--ink-3);
 }
-.card-label.accent { color: var(--green); }
 
 .card-body {
   font-size: 14px;
@@ -864,6 +869,40 @@ body.has-sel .app { padding-bottom: 104px; }
   color: var(--red);
 }
 
+/* ============ 轻提示 Toast ============ */
+
+.toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(440px, calc(100% - 32px));
+  padding: 10px 16px 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 14px 34px -12px rgba(28, 26, 23, 0.3), 0 2px 6px rgba(28, 26, 23, 0.06);
+  font-size: 13px;
+  color: var(--ink);
+  transform: translateX(-50%);
+  animation: toastIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.toast svg { flex: none; color: var(--accent); }
+.toast.is-out { animation: toastOut 0.24s ease forwards; }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, -14px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to   { opacity: 0; transform: translate(-50%, -12px); }
+}
+
 /* ============ 页脚 ============ */
 
 .foot {
@@ -905,14 +944,29 @@ body.has-sel .app { padding-bottom: 104px; }
 @media (max-width: 900px) {
   .template-grid { grid-template-columns: repeat(2, 1fr); }
   .records-body.grid-mode { grid-template-columns: repeat(2, 1fr); }
+
+  /* 平板宽度下先让「大小」离场，给标题留出完整文字的空间 */
+  .records-head .head-cols,
+  .rec-open { grid-template-columns: minmax(0, 1fr) 110px 80px 90px; }
+  .records-head .rh-size,
+  .rec-col.rh-size { display: none; }
 }
 
 @media (max-width: 640px) {
   .app { padding: 0 16px 48px; }
 
+  /* 记录行：标题独占一行，时间与来源并排；胶囊按自身文字宽度收窄 */
   .records-head { display: none; }
   .record-row { display: block; padding-right: 46px; }
-  .rec-open { grid-template-columns: 1fr; gap: 6px; }
+  .rec-open {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 14px 0;
+  }
+  .rec-main { flex: 1 1 100%; }
+  .rec-col { font-size: 11.5px; }
   .rec-check {
     position: absolute;
     top: 14px;
@@ -923,8 +977,16 @@ body.has-sel .app { padding-bottom: 104px; }
 
   .records-body.grid-mode { grid-template-columns: 1fr; }
 
-  .search-box input { width: 100px; }
+  /* 工具栏第二行铺满：搜索框吃掉剩余宽度，视图切换靠右 */
+  .toolbar { row-gap: 10px; }
+  .toolbar-right { flex: 1 1 100%; }
+  .search-box { flex: 1; }
+  .search-box input { width: 100%; }
 
-  .view-title { font-size: 18px; }
+  /* 标题保持单行省略；详情页另给标题整行宽度（见 views.css） */
+  .view-title {
+    font-size: 18px;
+  }
+
   .card { padding: 16px; }
 }

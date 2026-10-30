@@ -9,6 +9,8 @@ const path = require("node:path");
 const repos = require("../data/db/repositories");
 const ingestion = require("../modules/ingestion");
 const transcription = require("../modules/transcription");
+const modelConfig = require("../modules/model-config");
+const { parseOptions } = require("../modules/transcription/options");
 const minutesSvc = require("../modules/minutes");
 const { ok, fail, bad, missing } = require("../shared/http");
 
@@ -145,7 +147,13 @@ router.post("/api/jobs/:id/diarize", (req, res) => {
   }
 
   const speakerCount = Number(req.body?.speakerCount) || null;
-  const options = { diarize: true, speakerCount };
+  // 保留上传时存下的模型配置，只把这次带过来的非空项覆盖上去
+  const existing = parseOptions(job);
+  const merged = modelConfig.merge(
+    existing.modelConfig,
+    modelConfig.parsePayload(req.body?.modelConfig)
+  );
+  const options = { ...existing, diarize: true, speakerCount, modelConfig: merged };
   updateJob(job.id, {
     status: "queued",
     stage: "QUEUED",

@@ -9,6 +9,7 @@ import { BUS, emit } from "../../core/bus.js";
 import { state } from "../../core/store.js";
 import { showError } from "../../core/toast.js";
 import { openPicker } from "../templates/picker.js";
+import { modelConfigPayload } from "../models/setup.js";
 import {
   btnSummary, btnMinuteAdd, summaryLoading, summaryLoadingText, summaryBody, btnCopySummary,
 } from "./refs.js";
@@ -65,7 +66,11 @@ export async function generateMinutesFlow(templateId) {
   }
 
   try {
-    const data = await postJson(API.minutes, { recordId: state.record.id, templateId: templateId || null });
+    const data = await postJson(API.minutes, {
+      recordId: state.record.id,
+      templateId: templateId || null,
+      modelConfig: modelConfigPayload(),
+    });
     if (!data.success) throw new Error(data.error || "生成纪要失败");
 
     state.minutes = state.minutes

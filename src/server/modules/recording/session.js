@@ -79,13 +79,14 @@ class RecordSession {
         reject(e);
       };
 
+      // 换成公共端点时不需要工作区头，带空值反而会被拒
+      const headers = { Authorization: `bearer ${this.opts.apiKey}` };
+      if (this.opts.workspace) headers["X-DashScope-WorkSpace"] = this.opts.workspace;
+
       let ws;
       try {
         ws = new WebSocket(this.wsUrl(), {
-          headers: {
-            Authorization: `bearer ${this.opts.apiKey}`,
-            "X-DashScope-WorkSpace": this.opts.workspace,
-          },
+          headers,
           handshakeTimeout: protocol.handshakeMs,
         });
       } catch (e) {

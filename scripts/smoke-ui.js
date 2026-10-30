@@ -290,6 +290,44 @@ async function main() {
     await click("#btnBackNew");
     await waitFor(`document.getElementById("viewHome").hidden === false`);
 
+    console.log("== 模型配置 ==");
+    check("顶栏不再显示「本机运行」提示", await evaluate(`document.querySelectorAll(".topbar-hint").length === 0`));
+    const cfgDefaults = await evaluate(`fetch("/api/model-config").then(r => r.json()).then(d => d.defaults)`);
+    await click("#btnModelSetup");
+    check("打开模型配置浮层", await waitFor(`!document.getElementById("modelSetup").hidden`));
+    check("纪要生成区块有 3 个字段", (await evaluate(`document.querySelectorAll("#minutesFields .model-field").length`)) === 3);
+    check("转写模式有 3 个选项", (await evaluate(`document.querySelectorAll("#sttModes .model-mode").length`)) === 3);
+    check("当前模式面板有 3 个字段", (await evaluate(`document.querySelectorAll("#sttPanel .model-field").length`)) === 3);
+    check(
+      "模型 ID 预填为 .env 里的模型",
+      (await evaluate(`document.querySelector("#minutesFields input[data-key='model']").value`)) === cfgDefaults.minutes.model,
+      `${cfgDefaults.minutes?.model}`
+    );
+    check(
+      "服务地址预填为 .env 里的地址",
+      (await evaluate(`document.querySelector("#minutesFields input[data-key='url']").value`)) === cfgDefaults.minutes.url
+    );
+    check("密钥框不下发服务端密钥", (await evaluate(`document.querySelector("#minutesFields input[data-key='key']").value`)) === "");
+    check("密钥框提示沿用服务端配置", (await evaluate(`document.querySelector("#minutesFields input[data-key='key']").placeholder`)) === "留空则沿用服务端配置");
+    check("有两个 API 指引链接", (await evaluate(`document.querySelectorAll(".model-guide-link").length`)) === 2);
+    check("指引链接指向外部文档", (await evaluate(`document.querySelector(".model-guide-link").href`)).includes("mimo.mi.com"));
+    await click('.model-mode[data-mode="realtime"]');
+    check(
+      "切到实时模式换掉模型 ID",
+      (await evaluate(`document.querySelector("#sttPanel input[data-key='model']").value`)) === cfgDefaults.realtime.model
+    );
+    check("切模式后字段仍是 3 个", (await evaluate(`document.querySelectorAll("#sttPanel .model-field").length`)) === 3);
+    // 测试连接：通与不通都会给回一句话，不该一直卡在「检测中…」
+    await click("#minutesFields [data-test]");
+    await waitFor(
+      `document.querySelector("#minutesFields [data-result]").textContent.trim() !== "检测中…"`,
+      20000
+    );
+    const testText = await evaluate(`document.querySelector("#minutesFields [data-result]").textContent.trim()`);
+    check("测试连接给出结果", testText.length > 0 && testText !== "检测中…", testText);
+    await click("[data-close-model]");
+    check("关闭模型配置浮层", await waitFor(`document.getElementById("modelSetup").hidden`));
+
 
     if (process.env.SMOKE_RECORD === "1") {
       console.log("== 实时录音（假麦克风） ==");

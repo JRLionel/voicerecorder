@@ -6,6 +6,7 @@ const express = require("express");
 
 const repos = require("../data/db/repositories");
 const minutesSvc = require("../modules/minutes");
+const modelConfig = require("../modules/model-config");
 const { ok, bad, missing, fail } = require("../shared/http");
 
 const { getRecord } = repos.records;
@@ -18,8 +19,16 @@ router.post("/api/minutes", async (req, res) => {
   if (!jobId && !recordId && !String(text || "").trim()) {
     return bad(res, "请提供 jobId、recordId 或文本");
   }
+  // 浏览器配置优先，缺项回落到 .env
+  let model;
   try {
-    const result = await minutesSvc.generateMinutes({ jobId, recordId, text, templateId });
+    const overrides = modelConfig.parsePayload(req.body?.modelConfig);
+    model = modelConfig.resolveFor("minutes", overrides.minutes);
+  } catch (e) {
+    return bad(res, e.message, "MODEL_NOT_CONFIGURED");
+  }
+  try {
+    const result = await minutesSvc.generateMinutes({ jobId, recordId, text, templateId, model });
     return ok(res, result);
   } catch (e) {
     return fail(res, e);

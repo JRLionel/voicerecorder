@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="styles/views.css">
   <link rel="stylesheet" href="styles/recording.css">
   <link rel="stylesheet" href="styles/templates.css">
+  <link rel="stylesheet" href="styles/modelsetup.css">
 </head>
 <body>
   <div class="app">
@@ -36,7 +37,14 @@
           </svg>
           我的模板
         </button>
-        <span class="topbar-hint">本机运行 · 文件不出内网</span>
+        <button class="btn btn-model" id="btnModelSetup" type="button" aria-haspopup="dialog">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7h9"/><path d="M17 7h3"/><path d="M4 17h3"/><path d="M11 17h9"/>
+            <circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>
+          </svg>
+          模型配置
+          <span class="model-badge" id="modelBadge">0 / 4</span>
+        </button>
       </div>
     </header>
 
@@ -418,11 +426,12 @@
         生成会议纪要
       </button>
 
-      <section class="card summary-card" id="summaryResult" hidden>
+      <section class="card summary-card" id="summaryResult" aria-label="会议纪要" hidden>
         <div class="card-head">
           <div class="minute-head">
-            <span class="card-label accent">会议纪要</span>
-            <div class="minute-tabs" id="minuteTabs" role="tablist" aria-label="纪要版本"></div>
+            <!-- 这里只放「已生成的纪要」按钮，按钮文字就是它用的模板名；
+                 不再另加「会议纪要」固定标题，避免与模板名重复 -->
+            <div class="minute-tabs" id="minuteTabs" role="tablist" aria-label="已生成的纪要"></div>
           </div>
           <div class="card-head-actions">
             <button class="btn btn-ghost btn-min-add" id="btnMinuteAdd" title="用另一个模板再生成一份，不会覆盖已有结果">＋ 再生成一份</button>
@@ -511,6 +520,78 @@
       </div>
     </div>
   </div>
+
+  <!-- 模型配置浮层：纪要生成 + 语音转文字（三种模式各自独立配置） -->
+  <div class="layer-backdrop" id="modelSetup" hidden>
+    <div class="layer layer-model" role="dialog" aria-modal="true" aria-labelledby="modelSetupTitle">
+      <div class="layer-head model-head">
+        <div class="model-head-main">
+          <div class="model-title-row">
+            <h3 class="layer-title model-title" id="modelSetupTitle">模型配置</h3>
+            <span class="model-kicker">MODEL SETUP</span>
+          </div>
+          <p class="model-lead">为「纪要生成」与「语音转文字」接入自建模型服务。语音转文字的三种模式各自独立配置，可指向不同服务商。</p>
+        </div>
+        <div class="model-head-side">
+          <span class="model-guide-label">API接入指引</span>
+          <a class="model-guide-link" href="https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/Speech-Recognition" target="_blank" rel="noopener noreferrer" title="打开 mimo 语音识别接入文档">mimo</a>
+          <a class="model-guide-link" href="https://docs.bailian.console.aliyun.com/zh/model-studio/real-time-speech-recognition-user-guide" target="_blank" rel="noopener noreferrer" title="打开百炼实时语音识别接入文档">千问</a>
+        </div>
+        <button class="layer-close model-close" type="button" data-close-model aria-label="关闭">&times;</button>
+      </div>
+
+      <div class="model-body">
+        <!-- 01 纪要生成 -->
+        <section class="model-block">
+          <header class="model-block-head">
+            <span class="model-no">01</span>
+            <h4 class="model-block-title">纪要生成</h4>
+            <span class="model-en">MINUTES GENERATION</span>
+            <span class="model-status" id="minutesStatus"><i></i><span>未配置</span></span>
+          </header>
+          <div class="model-fields" id="minutesFields"></div>
+        </section>
+
+        <!-- 02 语音转文字 -->
+        <section class="model-block">
+          <header class="model-block-head">
+            <span class="model-no">02</span>
+            <h4 class="model-block-title">语音转文字</h4>
+            <span class="model-en">SPEECH TO TEXT</span>
+            <span class="model-status" id="sttStatus"><i></i><span>0 / 3 项已就绪</span></span>
+          </header>
+          <p class="model-sub-label">转写模式 · 三种模式可分别指向不同的模型服务</p>
+          <div class="model-modes" id="sttModes" role="tablist" aria-label="转写模式">
+            <button class="model-mode is-active" type="button" role="tab" data-mode="batch" aria-selected="true">
+              <span class="model-mode-no">MODE / 01</span>
+              <span class="model-mode-title">非实时</span>
+              <span class="model-mode-sub">说话人不分离</span>
+            </button>
+            <button class="model-mode" type="button" role="tab" data-mode="diar" aria-selected="false">
+              <span class="model-mode-no">MODE / 02</span>
+              <span class="model-mode-title">非实时</span>
+              <span class="model-mode-sub">说话人分离</span>
+            </button>
+            <button class="model-mode" type="button" role="tab" data-mode="realtime" aria-selected="false">
+              <span class="model-mode-no">MODE / 03</span>
+              <span class="model-mode-title">实时</span>
+              <span class="model-mode-sub">流式低延迟</span>
+            </button>
+          </div>
+          <div class="model-panel" id="sttPanel"></div>
+        </section>
+      </div>
+
+      <div class="layer-foot model-foot">
+        <span class="model-note">配置存于本浏览器 · 留空则沿用服务端 .env</span>
+        <button class="btn btn-ghost" type="button" data-close-model>取消</button>
+        <button class="btn btn-primary" type="button" id="modelSave">保存配置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局轻提示 -->
+  <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
 
   <script type="module" src="js/main.js"></script>
 </body>

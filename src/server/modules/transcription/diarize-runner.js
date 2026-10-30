@@ -6,6 +6,7 @@
  */
 
 const { diarizeFile, analyzeDiarization } = require("../asr");
+const modelConfig = require("../model-config");
 const repos = require("../../data/db/repositories");
 const { limits, speakers: speakerRules } = require("../../data");
 const { setStage } = require("./progress");
@@ -39,7 +40,12 @@ async function runDiarize(jobId, job, dir, wavPath, meta) {
   };
 
   guard("UPLOAD_REMOTE", { progress: 15 });
+  // 浏览器里配的服务优先，缺项回落到 .env
+  const bailian = modelConfig.resolveBailian("diar", opts.modelConfig?.diar);
   const { sentences, taskId } = await diarizeFile(wavPath, {
+    model: bailian.model,
+    host: bailian.host,
+    apiKey: bailian.apiKey,
     speakerCount: opts.speakerCount,
     language: job.language,
     onStage: guard,

@@ -70,6 +70,9 @@
 
 .view-rec { max-width: 1080px; margin: 0 auto; }
 
+/* 预录态和上传页同宽同轴：标题与卡片共用 720 列，居中 */
+#recIdle { max-width: 720px; margin: 0 auto; }
+
 .rec-idle-card {
   margin-top: 26px;
   padding: 44px 24px 34px;

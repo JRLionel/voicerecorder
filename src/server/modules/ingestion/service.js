@@ -10,6 +10,7 @@ const path = require("node:path");
 const { probeAndValidate } = require("./validate-file");
 const { decodeFilename } = require("./upload.middleware");
 const repos = require("../../data/db/repositories");
+const modelConfig = require("../model-config");
 const { enqueue, detectSourceType, JOBS_DIR } = require("../transcription");
 const { engines, limits } = require("../../data");
 
@@ -29,6 +30,8 @@ async function createJobFromUpload({ file, body = {} }) {
   const autoMinutes = body.autoMinutes === "true" || body.autoMinutes === true;
   const templateId = body.templateId ? String(body.templateId) : null;
   const output = autoMinutes ? "summary" : "transcript";
+  // 浏览器里配好的模型服务：跟着任务一起存，任务异步跑的时候才拿得到
+  const overrides = modelConfig.parsePayload(body.modelConfig);
 
   try {
     const meta = await probeAndValidate(srcPath, { diarize });
@@ -44,7 +47,11 @@ async function createJobFromUpload({ file, body = {} }) {
       engine: diarize ? "bailian_filetrans" : "mimo",
       templateId,
       autoMinutes,
-      options: { diarize, speakerCount: diarize ? speakerCount : null },
+      options: {
+        diarize,
+        speakerCount: diarize ? speakerCount : null,
+        modelConfig: overrides,
+      },
     });
 
     // 源文件搬进任务目录，便于按任务清理与回放

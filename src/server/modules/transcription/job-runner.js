@@ -9,6 +9,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const audio = require("../audio");
+const modelConfig = require("../model-config");
 const repos = require("../../data/db/repositories");
 const { controls, isCanceled } = require("./controls");
 const { setStage } = require("./progress");
@@ -89,8 +90,15 @@ async function runJob(jobId, { resume = false } = {}) {
     // 幂等：续跑/重跑时已有纪要就跳过，否则每次续跑都会多堆一份。
     const done = getJob(jobId);
     if (done?.auto_minutes && done.record_id && countMinutes(done.record_id) === 0) {
+      // 自动纪要用同一个任务里存下的模型配置，别让浏览器再传一遍
+      let minutesModel = null;
+      try {
+        minutesModel = modelConfig.resolveFor("minutes", opts.modelConfig?.minutes);
+      } catch (e) {
+        console.error(`[${jobId}] 纪要模型未配置: ${e.message}`);
+      }
       minutesSvc
-        .generateMinutes({ jobId })
+        .generateMinutes({ jobId, model: minutesModel })
         .catch((e) => console.error(`[${jobId}] 自动生成纪要失败: ${e.message}`));
     }
 

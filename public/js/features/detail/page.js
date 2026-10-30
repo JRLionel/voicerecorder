@@ -14,6 +14,7 @@ import { confirmDialog } from "../../components/modal.js";
 import { renderTranscriptRows } from "../../components/transcript-row.js";
 import { hydrateMinutes, stopMinutesPoll } from "../minutes/panel.js";
 import { autoGenerateMinutes, copyText } from "../minutes/actions.js";
+import { modelConfigPayload } from "../models/setup.js";
 import { watchJob } from "../upload/page.js";
 import { seekTo, pausePlayer, playerBar, player, initPlayer } from "./player.js";
 import { initTranscriptInteractions } from "./speaker-rename.js";
@@ -92,7 +93,7 @@ function renderDiarizeBanner(job) {
       const data = await jsonFetch(API.jobDiarize(job.id), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ modelConfig: modelConfigPayload() }),
       });
       if (!data.success) {
         showError(data.error || "重新标注失败");

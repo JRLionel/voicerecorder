@@ -19,12 +19,17 @@ import { initDetailPage } from "./features/detail/page.js";
 import { initMinutesPanel } from "./features/minutes/panel.js";
 import { initMinutesActions } from "./features/minutes/actions.js";
 import { initTemplatesPage } from "./features/templates/page.js";
-import { initPicker, initUploadTemplateButton } from "./features/templates/picker.js";
+import { initPicker, initUploadTemplateButton, loadTemplates } from "./features/templates/picker.js";
 import { initEditor } from "./features/templates/editor.js";
+import { initModelSetup } from "./features/models/setup.js";
 
 async function boot() {
   // 阈值 / 文案：服务端 shared/ 的同一份数据
   await loadMeta();
+
+  // 模板列表含 defaultId，纪要里的「标记去向」文案要用它判断是否默认模板，
+  // 只在打开选择浮层时才加载会让首屏文案取决于操作顺序，所以启动时就取一次
+  await loadTemplates();
 
   initModal();
 
@@ -39,6 +44,7 @@ async function boot() {
   initEditor();
   initTemplatesPage();
   initUploadTemplateButton($("#btnPickTemplate"));
+  initModelSetup();
 
   // 首页三个入口：上传（视频/音频）与实时录音是两个 feature
   $$(".entry-card").forEach((card) => {

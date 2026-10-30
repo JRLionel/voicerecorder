@@ -8,7 +8,7 @@ const crypto = require("node:crypto");
 const path = require("node:path");
 const WebSocket = require("ws");
 
-const config = require("../../config");
+const modelConfig = require("../model-config");
 const { protocol } = require("../../data");
 const repos = require("../../data/db/repositories");
 const { RecordingSink } = require("../audio");
@@ -38,16 +38,13 @@ function attachRealtime(server) {
 
       if (msg.type === "start") {
         if (session) return;
-        if (!config.bailian.realtimeConfigured) {
-          const missing = [
-            ["DASHSCOPE_API_KEY", config.bailian.apiKey],
-            ["BAILIAN_WS_HOST", config.bailian.wsHost],
-            ["BAILIAN_WORKSPACE", config.bailian.workspace],
-          ].filter(([, v]) => !v).map(([k]) => k);
-          client.send(JSON.stringify({
-            type: "error",
-            message: `服务端未配置 ${missing.join(" / ")}，实时转写不可用`,
-          }));
+        // 浏览器里配的实时服务优先，缺项回落到 .env
+        const overrides = modelConfig.parsePayload(msg.modelConfig);
+        let realtime;
+        try {
+          realtime = modelConfig.resolveBailian("realtime", overrides.realtime);
+        } catch (e) {
+          client.send(JSON.stringify({ type: "error", message: e.message }));
           return;
         }
 
@@ -59,7 +56,7 @@ function attachRealtime(server) {
           engine: "bailian_stream",
           output: msg.output === "transcript" ? "transcript" : "summary",
           language: msg.language || "auto",
-          options: { diarize: false },
+          options: { diarize: false, modelConfig: overrides },
         });
         jobId = job.id;
         updateJob(jobId, { status: "running", stage: "RECORDING", progress: 0 });
@@ -70,10 +67,10 @@ function attachRealtime(server) {
         session = new RecordSession(client, {
           jobId,
           sink,
-          apiKey: config.bailian.apiKey,
-          host: config.bailian.wsHost,
-          workspace: config.bailian.workspace,
-          model: config.bailian.asrModel,
+          apiKey: realtime.apiKey,
+          host: realtime.host,
+          workspace: realtime.workspace,
+          model: realtime.model,
           language: msg.language || "auto",
           output: msg.output === "transcript" ? "transcript" : "summary",
         });

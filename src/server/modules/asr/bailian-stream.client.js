@@ -82,12 +82,13 @@ function transcribeOnce(buf, opts) {
       sent = end;
     }, Math.max(5, Math.round(FRAME_MS / speed)));
 
+    // 换成公共端点时不需要工作区头，带空值反而会被拒
+    const headers = { Authorization: `bearer ${apiKey}` };
+    if (workspace) headers["X-DashScope-WorkSpace"] = workspace;
+
     try {
       ws = new WebSocket(wsUrl(host), {
-        headers: {
-          Authorization: `bearer ${apiKey}`,
-          "X-DashScope-WorkSpace": workspace,
-        },
+        headers,
         handshakeTimeout: connectTimeoutMs,
       });
     } catch (e) {

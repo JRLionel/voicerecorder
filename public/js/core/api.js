@@ -7,6 +7,8 @@
 
 export const API = {
   meta: "/api/meta",
+  modelConfig: "/api/model-config",
+  modelConfigTest: "/api/model-config/test",
   records: "/api/records",
   record: (id) => `/api/records/${id}`,
   recordMinutes: (id) => `/api/records/${id}/minutes`,

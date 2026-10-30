@@ -65,7 +65,7 @@ function getMinutesDetail(id) {
  * 有记录时落库并切换当前指针；没有记录（纯文本调用）时只生成不落库。
  */
 
-async function generateMinutes({ jobId = null, recordId = null, text = null, templateId = null, onProgress } = {}) {
+async function generateMinutes({ jobId = null, recordId = null, text = null, templateId = null, model = null, onProgress } = {}) {
   let job = null;
   let record = null;
 
@@ -92,6 +92,7 @@ async function generateMinutes({ jobId = null, recordId = null, text = null, tem
     const result = await generateSummary(segments, {
       markers: [],
       template: picked.template,
+      model,
       onProgress,
     });
     return {
@@ -120,6 +121,7 @@ async function generateMinutes({ jobId = null, recordId = null, text = null, tem
     const result = await generateSummary(segments, {
       markers,
       template: picked.template,
+      model,
       onProgress,
     });
     // 模型返回旧结构时 generateSummary 会回落到默认模板，快照要跟着改

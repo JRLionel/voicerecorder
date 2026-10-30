@@ -8,6 +8,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const audio = require("../audio");
+const modelConfig = require("../model-config");
 const { transcribeFile, transcribePcm } = require("../asr");
 const { limits, protocol } = require("../../data");
 const config = require("../../config");
@@ -19,6 +20,7 @@ const { upsertSegment, doneSegmentIndexes } = repos.segments;
 
 const { setStage } = require("./progress");
 const { isCanceled } = require("./controls");
+const { parseOptions } = require("./options");
 const { looksDegenerate } = require("./quality-guard");
 const { planChunks } = require("./chunk-plan");
 
@@ -33,8 +35,17 @@ async function transcribeChunk(wavPath, chunk, dir, job) {
   let engine = "mimo";
   let status = "done";
 
+  // 浏览器里配的服务优先，缺项回落到 .env
+  const overrides = parseOptions(job).modelConfig || {};
+
   try {
-    const r = await transcribeFile(mp3, { language: job.language || "auto" });
+    const mimo = modelConfig.resolveMimo("batch", overrides.batch);
+    const r = await transcribeFile(mp3, {
+      apiKey: mimo.key,
+      apiUrl: mimo.url,
+      model: mimo.model,
+      language: job.language || "auto",
+    });
     text = r.text;
     if (looksDegenerate(text, durSec)) {
       throw new Error(`字率过低（${text.length} 字 / ${durSec.toFixed(0)}s），判定模型退化`);
@@ -46,11 +57,12 @@ async function transcribeChunk(wavPath, chunk, dir, job) {
     // 兜底：同一段音频转 PCM 走百炼流式
     const pcm = path.join(dir, `chunk_${String(chunk.idx).padStart(3, "0")}.pcm`);
     await audio.toPcm(mp3, pcm);
+    const bailian = modelConfig.resolveBailian("realtime", overrides.realtime);
     const r = await transcribePcm(pcm, {
-      apiKey: config.bailian.apiKey,
-      host: config.bailian.wsHost,
-      workspace: config.bailian.workspace,
-      model: config.bailian.asrModel,
+      apiKey: bailian.apiKey,
+      host: bailian.host,
+      workspace: bailian.workspace,
+      model: bailian.model,
       languageHints: job.language && job.language !== "auto" ? [job.language] : undefined,
       speed: protocol.streamSpeed,
       retries: 1,

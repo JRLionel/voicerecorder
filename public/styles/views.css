@@ -8,16 +8,6 @@
 
 .view-narrow { max-width: 720px; margin: 0 auto; }
 
-.topbar-hint {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--ink-3);
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  background: var(--surface);
-}
-
 /* ---------- 三入口 ---------- */
 
 .entry-grid {
@@ -100,7 +90,8 @@
 }
 
 #language {
-  padding: 8px 12px;
+  height: 38px;
+  padding: 0 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -436,6 +427,16 @@
 .result-card { display: block; margin-top: 18px; }
 .summary-card { margin-top: 18px; border-color: rgba(31, 138, 91, 0.25); }
 
+/* 详情页纵向节奏：所有区块统一 16px 间隔，不再靠 14/18 混排 */
+#viewDetail { display: flex; flex-direction: column; gap: 16px; }
+#viewDetail > .view-head { margin: 10px 0 0; }
+#viewDetail .detail-meta { margin: 0; }
+#viewDetail .player-bar,
+#viewDetail .result-card,
+#viewDetail .summary-card,
+#viewDetail .job-banner,
+#viewDetail .btn-accent { margin-top: 0; }
+
 .card-head-actions { display: flex; align-items: center; gap: 10px; }
 .seg-count { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
 
@@ -572,15 +573,38 @@
 
 .sum-empty { font-size: 13px; color: var(--ink-3); }
 
-@media (max-width: 900px) {
-  .entry-grid { grid-template-columns: 1fr; }
-}
-
 @media (max-width: 640px) {
   .rec-timer { font-size: 34px; }
+  .entry-grid { grid-template-columns: 1fr; }
   .field { align-items: flex-start; flex-direction: column; gap: 8px; }
   .field-label { width: auto; }
+  /* 竖排后控件撑满整行，和上面的上传区、下面的开始按钮同宽 */
+  .field > select,
+  .field > .template-select { width: 100%; flex: none; }
   .seg-row { gap: 8px; }
+
+  /* 入口卡改为「图标 + 文字」横排，比三段竖排更紧凑 */
+  .entry-card {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-areas:
+      "icon title"
+      "icon desc";
+    align-content: center;
+    align-items: center;
+    column-gap: 14px;
+    row-gap: 2px;
+    padding: 14px 16px;
+  }
+  .entry-icon { grid-area: icon; margin-bottom: 0; }
+  .entry-title { grid-area: title; }
+  .entry-desc { grid-area: desc; }
+
+  /* 详情页：返回按钮独占一行，标题拿满剩余宽度，不再被挤成省略号 */
+  #viewDetail .view-head { flex-wrap: wrap; row-gap: 6px; }
+  #viewDetail .view-head-main { flex-basis: 100%; }
+  #viewDetail .view-title { font-size: 17px; }
+  #viewDetail .detail-meta { gap: 6px 14px; }
 }
 
 .rec-wave.is-idle i { background: var(--line-2); opacity: 1; }

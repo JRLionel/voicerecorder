@@ -142,6 +142,37 @@ cp .env.example .env
 > 缺少 MIMO 配置时启动会告警「转写与纪要会失败」；缺少百炼配置时告警「实时录音不可用」，静态文件转写不受影响。
 > `ASR_MODEL` / `DIAR_MODEL` 不填就用上表默认值。
 
+#### 也可以在界面里改（不必改文件）
+
+顶栏「模型配置」可以逐项改这四类模型服务：
+
+| 配置项 | 对应 .env | 作用 |
+| --- | --- | --- |
+| 纪要生成 | `MIMO_API_URL` / `MIMO_API_KEY` / `MIMO_SUMMARY_MODEL` | 会议纪要（map-reduce 摘要） |
+| 非实时 · 说话人不分离 | `MIMO_API_URL` / `MIMO_API_KEY` / `MIMO_ASR_MODEL` | 静态文件转写 |
+| 非实时 · 说话人分离 | `BAILIAN_WS_HOST` / `DASHSCOPE_API_KEY` / `DIAR_MODEL` | 离线分离（filetrans） |
+| 实时 | `BAILIAN_WS_HOST` / `DASHSCOPE_API_KEY` / `ASR_MODEL` | 实时录音（流式 WebSocket） |
+
+规则是**逐字段合并**：
+
+- 界面里显示的地址与模型 ID 默认就是 `.env` 里的当前值（`.env` 改了，界面跟着变）；
+- 密钥框**留空 = 沿用服务端 `.env` 的密钥**，服务端密钥不会下发到浏览器；
+- 只有在界面里改动过的字段才会存进浏览器的 localStorage，随请求带给后端；
+- 后端解析时同样是「浏览器填了的用浏览器的，没填的回落 `.env`」。
+
+配置只存在浏览器本地（`localStorage`），不会上传到任何服务器；但**音频是否出本机取决于你填的服务地址**——指向云端模型时，音频会被转发给那个服务商。
+
+弹窗里的「测试连接」是**真检测**，会按各引擎真实发一次最小请求：
+
+| 配置项 | 探测方式 |
+| --- | --- |
+| 纪要生成 | 发一条极短的对话（chat completions） |
+| 非实时 · 说话人不分离 | 发 0.25 秒静音音频（识别模型只认 `input_audio`，纯文本会被拒） |
+| 非实时 · 说话人分离 | 取一次 OSS 上传凭证（GET，带模型参数） |
+| 实时 | 连一次 WebSocket 并发起一个空任务，模型没开通会被当场拒掉 |
+
+所以它能同时验出地址、密钥、模型三件事；密钥错会直接看到服务返回的 `401 Invalid API Key`。
+
 ### 3. 启动
 
 ```bash
@@ -368,12 +399,12 @@ voicerecorder/
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/api/jobs` | 上传文件并创建任务（multipart：`file` / `autoMinutes` / `templateId` / `language` / `diarize` / `speakerCount`） |
+| `POST` | `/api/jobs` | 上传文件并创建任务（multipart：`file` / `autoMinutes` / `templateId` / `language` / `diarize` / `speakerCount` / `modelConfig`） |
 | `GET` | `/api/jobs/:id` | 任务状态、进度、分段、标记、说话人名册、关联记录、`hasAudio` |
 | `POST` | `/api/jobs/:id/cancel` | 取消任务 |
 | `POST` | `/api/jobs/:id/resume` | 断点续跑 |
 | `POST` | `/api/jobs/:id/summary` | ~~已废弃~~，转发到 `/api/minutes`，保留兼容 |
-| `POST` | `/api/jobs/:id/diarize` | 对已有音频重新做说话人分离（body 可传 `{ speakerCount }`） |
+| `POST` | `/api/jobs/:id/diarize` | 对已有音频重新做说话人分离（body 可传 `{ speakerCount, modelConfig }`） |
 | `PATCH` | `/api/jobs/:id/speakers` | 说话人改名（`{ localId, label }`），返回 `needsSummary: true` |
 | `DELETE` | `/api/jobs/:id/markers/:markerId` | 删除单条标记 |
 | `GET` | `/api/jobs/:id/audio` | 播放用 wav（支持 Range，供播放器拖动与跳转） |
@@ -385,12 +416,14 @@ voicerecorder/
 | `POST` | `/api/records/batch-delete` | 批量删除（`{ ids: [] }`，事务内清理关联行） |
 | `DELETE` | `/api/records/:id` | 删除单条（连带清理任务目录） |
 | `POST` | `/api/meeting-summary` | ~~已废弃~~，转发到 `/api/minutes`，保留兼容 |
-| `POST` | `/api/minutes` | **生成一份纪要**（`{ jobId \| recordId \| text, templateId? }`），只追加不覆盖 |
+| `POST` | `/api/minutes` | **生成一份纪要**（`{ jobId \| recordId \| text, templateId?, modelConfig? }`），只追加不覆盖 |
 | `GET` | `/api/records/:id/minutes` | 该记录的纪要版本列表与当前指针 |
 | `GET` | `/api/minutes/:id` | 单份纪要（结构化 JSON + Markdown + 模板快照） |
 | `PATCH` | `/api/minutes/:id` | 设为当前纪要（`{ current: true }`） |
 | `DELETE` | `/api/minutes/:id` | 删除该份纪要；删当前项时指针自动回落到相邻一份 |
 | `GET` | `/api/meta` | 前端元数据：阈值、扩展名、枚举、界面文案（来自 `shared/`） |
+| `GET` | `/api/model-config` | 各模型服务的默认值（`url` / `model` / `hasKey`，**不含密钥**），供「模型配置」预填 |
+| `POST` | `/api/model-config/test` | 测试连接：`{ scope, url?, key?, model? }`，按各引擎真实调一次最小请求，返回 `{ ok, latencyMs }` 或 `{ ok:false, error }` |
 | `GET` | `/api/templates` | 模板列表（系统模板在前） |
 | `POST` | `/api/templates` | 新建模板（服务端生成 id 与章节 key） |
 | `PATCH` | `/api/templates/:id` | 修改模板（系统模板返回 403） |

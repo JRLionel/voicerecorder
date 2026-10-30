@@ -13,6 +13,7 @@ import { showError } from "../../core/toast.js";
 import { state } from "../../core/store.js";
 import { switchView } from "../../core/router.js";
 import { updateTemplateLabel } from "../templates/picker.js";
+import { modelConfigPayload } from "../models/setup.js";
 import { initDiarize, setDiarize, refreshDiarizeAvailability } from "./diarize.js";
 import {
   resetProgress, renderProgress, pollJob, stopPolling, markProgressStart, initProgressBindings,
@@ -123,6 +124,8 @@ async function startJob() {
 
   const fd = new FormData();
   fd.append("file", file);
+  // 浏览器里配好的模型服务（没有覆盖项时后端自动回落到 .env）
+  fd.append("modelConfig", JSON.stringify(modelConfigPayload()));
   fd.append("autoMinutes", state.autoMinutes ? "true" : "false");
   if (state.autoMinutes) fd.append("templateId", state.templateId || "");
   fd.append("language", language.value);

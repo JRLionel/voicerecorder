@@ -24,20 +24,20 @@ const MAP_MAX_TOKENS = MINUTES.mapMaxTokens;
 const REDUCE_MAX_TOKENS = MINUTES.reduceMaxTokens;
 const MAP_CONCURRENCY = MINUTES.mapConcurrency;
 
-async function chat(messages, { maxTokens = 1024, temperature = MINUTES.temperature.reduce } = {}) {
-  const apiKey = config.mimo.apiKey;
-  const apiUrl = config.mimo.apiUrl;
-  const model = config.mimo.summaryModel;
-  if (!apiKey || !apiUrl || !model) {
+async function chat(messages, { maxTokens = 1024, temperature = MINUTES.temperature.reduce, apiKey, apiUrl, model } = {}) {
+  const key = apiKey || config.mimo.apiKey;
+  const url = apiUrl || config.mimo.apiUrl;
+  const mdl = model || config.mimo.summaryModel;
+  if (!key || !url || !mdl) {
     throw new Error("服务端未配置 MIMO_API_KEY / MIMO_API_URL / MIMO_SUMMARY_MODEL");
   }
   let resp;
   try {
-    resp = await fetch(apiUrl, {
+    resp = await fetch(url, {
       method: "POST",
-      headers: { "api-key": apiKey, "Content-Type": "application/json" },
+      headers: { "api-key": key, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model,
+        model: mdl,
         messages,
         max_completion_tokens: maxTokens,
         temperature,
@@ -46,7 +46,7 @@ async function chat(messages, { maxTokens = 1024, temperature = MINUTES.temperat
     });
   } catch {
     // 直接把 TypeError 抛给用户没有意义，换成能指导排查的文案
-    throw new Error("纪要模型连接失败，请检查网络与 MIMO_API_URL 配置");
+    throw new Error("纪要模型连接失败，请检查网络与模型配置里的服务地址");
   }
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
@@ -77,11 +77,11 @@ ${templateFocusLine(template)}
 
 /**
  * @param {Array} segments  segments 表行（含 start_ms / text / speaker_label）
- * @param {{markers?: Array, template?: object, onProgress?: (p:number)=>void}} opts
+ * @param {{markers?: Array, template?: object, onProgress?: (p:number)=>void, model?: {url:string,key:string,model:string}}} opts
  * @returns {{ json: object, markdown: string, template: object, blocks: number }}
  */
 
-async function generateSummary(segments, { markers = [], template = DEFAULT_TEMPLATE, onProgress } = {}) {
+async function generateSummary(segments, { markers = [], template = DEFAULT_TEMPLATE, onProgress, model = null } = {}) {
   const events = buildEvents(segments, markers);
   const blocks = buildBlocks(events);
   if (!blocks.length) throw new Error("没有可总结的文本");
@@ -91,6 +91,9 @@ async function generateSummary(segments, { markers = [], template = DEFAULT_TEMP
 
   let tpl = template || DEFAULT_TEMPLATE;
   const system = buildSummaryPrompt(tpl, { hasSpeakers, hasMarkers });
+
+  /** 浏览器配置优先：调用方传了就用它，没传才走 .env */
+  const chatOpts = model ? { apiKey: model.key, apiUrl: model.url, model: model.model } : {};
 
   /** 归一；模型返回旧结构时回落到默认模板，保证渲染与快照自洽 */
   const settle = (parsed, seedText) => {
@@ -113,7 +116,7 @@ async function generateSummary(segments, { markers = [], template = DEFAULT_TEMP
           { role: "system", content: system },
           { role: "user", content: blocks[0] },
         ],
-        { maxTokens: REDUCE_MAX_TOKENS, temperature: MINUTES.temperature.single }
+        { ...chatOpts, maxTokens: REDUCE_MAX_TOKENS, temperature: MINUTES.temperature.single }
       )
     );
     const { data, used } = settle(parsed, blocks[0]);
@@ -132,7 +135,7 @@ async function generateSummary(segments, { markers = [], template = DEFAULT_TEMP
           { role: "system", content: mapSystem },
           { role: "user", content: block },
         ],
-        { maxTokens: MAP_MAX_TOKENS, temperature: MINUTES.temperature.map }
+        { ...chatOpts, maxTokens: MAP_MAX_TOKENS, temperature: MINUTES.temperature.map }
       );
     } catch (e) {
       digests[i] = `（本段摘要失败：${e.message}）`;
@@ -158,7 +161,7 @@ async function generateSummary(segments, { markers = [], template = DEFAULT_TEMP
       { role: "system", content: system },
       { role: "user", content: `${material}${markerList}` },
     ],
-    { maxTokens: REDUCE_MAX_TOKENS, temperature: MINUTES.temperature.reduce }
+    { ...chatOpts, maxTokens: REDUCE_MAX_TOKENS, temperature: MINUTES.temperature.reduce }
   );
   if (onProgress) onProgress(MINUTES.progress.beforeReduce);
 
@@ -170,7 +173,7 @@ async function generateSummary(segments, { markers = [], template = DEFAULT_TEMP
         { role: "system", content: system },
         { role: "user", content: `${material}${markerList}\n\n上次输出不是合法 JSON，请只输出 JSON 对象本身。` },
       ],
-      { maxTokens: REDUCE_MAX_TOKENS, temperature: MINUTES.temperature.retry }
+      { ...chatOpts, maxTokens: REDUCE_MAX_TOKENS, temperature: MINUTES.temperature.retry }
     );
     parsed = parseJsonLoose(raw);
   }

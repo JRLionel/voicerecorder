@@ -11,6 +11,9 @@
 
 const BASE = (process.argv[2] || process.env.SMOKE_BASE || "http://127.0.0.1:3000").replace(/\/$/, "");
 
+// 断言要用 .env 里的模型名做对照，服务端读的是同一份 .env
+require("dotenv").config();
+
 let pass = 0;
 const failures = [];
 
@@ -54,6 +57,30 @@ async function main() {
   for (const id of ["viewHome", "viewNew", "viewRec", "viewDetail", "viewTemplates", "tplPicker", "tplEditor", "selBar", "modalBackdrop"]) {
     check(`index.html 含 #${id}`, html.includes(`id="${id}"`));
   }
+
+  console.log(`== 模型配置 ==`);
+  const cfg = await req("GET", "/api/model-config");
+  check("GET /api/model-config success", cfg.json?.success === true);
+  const defaults = cfg.json?.defaults || {};
+  for (const scope of ["minutes", "batch", "diar", "realtime"]) {
+    check(`${scope} 默认配置字段完整`, hasKeys(defaults[scope], ["url", "model", "hasKey"]));
+    check(`${scope} 不下发密钥`, !("key" in (defaults[scope] || {})));
+  }
+  check(
+    "纪要默认模型取自 MIMO_SUMMARY_MODEL",
+    defaults.minutes?.model === process.env.MIMO_SUMMARY_MODEL,
+    defaults.minutes?.model
+  );
+  check(
+    "非实时转写默认模型取自 MIMO_ASR_MODEL",
+    defaults.batch?.model === process.env.MIMO_ASR_MODEL,
+    defaults.batch?.model
+  );
+
+  const badScope = await req("POST", "/api/model-config/test", { scope: "nope" });
+  check("未知作用域被拒 → 400", badScope.status === 400, `实际 ${badScope.status}`);
+  const noScope = await req("POST", "/api/model-config/test", {});
+  check("缺作用域被拒 → 400", noScope.status === 400, `实际 ${noScope.status}`);
 
   console.log(`== 模板 ==`);
   const tplList = await req("GET", "/api/templates");

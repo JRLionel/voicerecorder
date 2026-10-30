@@ -11,6 +11,7 @@ export const KEYS = {
   lastTemplateId: "vs_last_template_id",
   clientId: "vs_client_id",
   favs: "vs_fav_ids",
+  modelConfig: "vs_model_config",
   pendingMarks: "vs.marks.pending",
   marksFor: (jobId) => `vs.marks.${jobId || "pending"}`,
 };

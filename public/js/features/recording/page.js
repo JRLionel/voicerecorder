@@ -16,6 +16,7 @@ import { KEYS, write, remove, read } from "../../core/storage.js";
 import { showError } from "../../core/toast.js";
 import { state } from "../../core/store.js";
 import { switchView, setBeforeLeave } from "../../core/router.js";
+import { modelConfigPayload } from "../models/setup.js";
 import { confirmDialog, openModal } from "../../components/modal.js";
 import { micIcon } from "../../components/icons.js";
 import { openDetail } from "../detail/page.js";
@@ -192,6 +193,7 @@ async function startRecording() {
       type: "start",
       language: language.value,
       output: state.autoMinutes ? "summary" : "transcript",
+      modelConfig: modelConfigPayload(),
     }));
 
     // 先置 active，避免音频图刚连上时的头几帧被丢掉

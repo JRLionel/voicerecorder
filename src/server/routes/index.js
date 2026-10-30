@@ -8,9 +8,11 @@ const { router: minutesRouter } = require("./minutes.routes");
 const { router: templatesRouter } = require("./templates.routes");
 const { router: legacyRouter } = require("./legacy.routes");
 const { router: metaRouter } = require("./meta.routes");
+const { router: modelConfigRouter } = require("./model-config.routes");
 
 const ROUTERS = [
   metaRouter,
+  modelConfigRouter,
   // 模板与纪要要先于记录注册：/api/records/:id/minutes 需要独立匹配
   templatesRouter,
   minutesRouter,
