@@ -2,8 +2,9 @@
 require("dotenv").config();
 const fs = require("node:fs");
 const path = require("node:path");
-const { probe, extractWav, findSilences, planCuts, slicePcm, fmtTime } = require("../server/audio");
-const { transcribePcm } = require("../server/asr-bailian");
+const { probe, extractWav, findSilences, planCuts, slicePcm, fmtTime } = require("../src/server/modules/audio");
+const { transcribePcm } = require("../src/server/modules/asr");
+const config = require("../src/server/config");
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -19,19 +20,8 @@ function parseArgs(argv) {
   return args;
 }
 
-async function mapLimit(items, limit, worker) {
-  const results = new Array(items.length);
-  let cursor = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
-      const idx = cursor++;
-      if (idx >= items.length) return;
-      results[idx] = await worker(items[idx], idx);
-    }
-  });
-  await Promise.all(runners);
-  return results;
-}
+const { mapPool } = require("../src/server/shared/utils/pool");
+const mapLimit = (items, limit, worker) => mapPool(items, limit, worker);
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -41,10 +31,10 @@ async function main() {
     process.exit(1);
   }
 
-  const apiKey = process.env.DASHSCOPE_API_KEY;
-  const host = process.env.BAILIAN_WS_HOST;
-  const workspace = process.env.BAILIAN_WORKSPACE;
-  const model = args.model || process.env.ASR_MODEL || "qwen-audio-3.0-asr-flash-streaming";
+  const apiKey = config.bailian.apiKey;
+  const host = config.bailian.wsHost;
+  const workspace = config.bailian.workspace;
+  const model = args.model || config.bailian.asrModel;
 
   if (!apiKey || !host || !workspace) {
     console.error("缺少 DASHSCOPE_API_KEY / BAILIAN_WS_HOST / BAILIAN_WORKSPACE，请检查 .env");

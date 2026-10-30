@@ -5,8 +5,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 
-const audio = require("../server/audio");
-const { diarizeFile, analyzeDiarization } = require("../server/bailian-offline");
+const audio = require("../src/server/modules/audio");
+const { diarizeFile, analyzeDiarization } = require("../src/server/modules/asr");
+const config = require("../src/server/config");
 
 /**
  * P0 门禁：验证 filetrans 的说话人分离是否真的生效。
@@ -42,12 +43,12 @@ async function main() {
     console.error(`文件不存在: ${args.file}`);
     process.exit(2);
   }
-  if (!process.env.DASHSCOPE_API_KEY || !process.env.BAILIAN_WS_HOST) {
+  if (!config.bailian.apiKey || !config.bailian.wsHost) {
     console.error("缺少 DASHSCOPE_API_KEY / BAILIAN_WS_HOST，请检查 .env");
     process.exit(2);
   }
 
-  const model = process.env.DIAR_MODEL || "qwen-audio-3.0-asr-flash-filetrans";
+  const model = config.bailian.diarModel;
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "diar-verify-"));
   const wav = path.join(tmpDir, "probe.wav");
 

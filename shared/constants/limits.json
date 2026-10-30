@@ -1,0 +1,61 @@
+{
+  "$comment": "业务阈值与容量上限。服务端与前端共用（前端经 GET /api/meta 获取）。",
+  "upload": {
+    "maxBytes": 2147483648,
+    "maxDurationSec": 14400,
+    "minDurationSec": 1
+  },
+  "diarize": {
+    "maxDurationSec": 7200,
+    "minSpeakerCount": 2,
+    "maxSpeakerCount": 6
+  },
+  "transcribe": {
+    "chunkSec": 30,
+    "concurrency": 4,
+    "minCharRate": 1.2,
+    "degenerateMinSec": 10,
+    "degenerateMaxChars": 12,
+    "minChunkSec": 2,
+    "resumeMinTailSec": 5
+  },
+  "minutes": {
+    "blockChars": 1800,
+    "mapMaxTokens": 700,
+    "reduceMaxTokens": 2400,
+    "mapConcurrency": 4,
+    "temperature": {
+      "single": 0.1,
+      "map": 0.1,
+      "reduce": 0.2,
+      "retry": 0
+    },
+    "lockWindowMs": 600000,
+    "progress": {
+      "mapWeight": 0.7,
+      "beforeReduce": 0.92
+    }
+  },
+  "records": {
+    "summaryChars": 46,
+    "pageSize": 20,
+    "maxPageSize": 100
+  },
+  "templates": {
+    "maxName": 30,
+    "maxDescription": 60,
+    "maxSectionTitle": 20,
+    "maxSectionHint": 200,
+    "maxPromptExtra": 500,
+    "maxSections": 8,
+    "maxCopySuffix": 99
+  },
+  "recording": {
+    "minDurationMs": 1000,
+    "finalizeTimeoutMs": 20000
+  },
+  "http": {
+    "jsonBodyLimit": "8mb",
+    "notFoundErrorStatus": 404
+  }
+}

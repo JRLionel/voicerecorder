@@ -1,0 +1,27 @@
+{
+  "$comment": "实时录音 WebSocket 协议参数与百炼流式推送节奏。",
+  "path": "/ws/record",
+  "frameMs": 100,
+  "bytesPerSec": 32000,
+  "rotateMs": 1200000,
+  "maxBufferSec": 30,
+  "backpressureBytes": 4194304,
+  "handshakeMs": 15000,
+  "taskTimeoutMarginMs": 120000,
+  "finishTimeoutMs": 10000,
+  "keepaliveMs": 20000,
+  "pingIntervalMs": 30000,
+  "pauseSilenceMs": 500,
+  "sentenceSilenceMs": 800,
+  "streamSpeed": 4,
+  "streamDeadline": {
+    "minMs": 90000
+  },
+  "messageTypes": {
+    "client": ["start", "mark", "mark-delete", "pause", "resume", "stop"],
+    "server": [
+      "connecting", "started", "ready", "sentence", "paused", "resumed",
+      "marker-ack", "marker-nack", "done", "error"
+    ]
+  }
+}

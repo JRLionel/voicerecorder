@@ -1,0 +1,14 @@
+{
+  "$comment": "首页三个入口的标题与提示。accept 见 media.json。",
+  "video": {
+    "title": "上传视频",
+    "hint": "mp4 / mov / mkv / avi / webm · 最大 2GB · 4 小时以内"
+  },
+  "audio": {
+    "title": "上传音频",
+    "hint": "mp3 / wav / m4a / ogg / flac · 最大 2GB · 4 小时以内"
+  },
+  "record": {
+    "title": "实时录音"
+  }
+}

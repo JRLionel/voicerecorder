@@ -8,7 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/views.css">
+  <link rel="stylesheet" href="styles/recording.css">
+  <link rel="stylesheet" href="styles/templates.css">
 </head>
 <body>
   <div class="app">
@@ -26,6 +30,12 @@
         <span class="brand-name">VoiceScribe <em>声记</em></span>
       </a>
       <div class="topbar-actions">
+        <button class="btn btn-ghost topbar-btn" id="btnTemplates">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3 3.5 7.2 12 11.4l8.5-4.2L12 3Z"/><path d="m3.5 12.2 8.5 4.2 8.5-4.2"/><path d="m3.5 16.8 8.5 4.2 8.5-4.2"/>
+          </svg>
+          我的模板
+        </button>
         <span class="topbar-hint">本机运行 · 文件不出内网</span>
       </div>
     </header>
@@ -142,13 +152,15 @@
           <button class="file-remove" id="btnRemove" title="移除">&times;</button>
         </div>
 
-        <div class="field">
-          <span class="field-label">输出类型</span>
-          <div class="seg-control" id="outputSeg" role="group" aria-label="输出类型">
-            <button class="seg-btn active" data-value="summary">会议纪要</button>
-            <button class="seg-btn" data-value="transcript">仅转写</button>
-          </div>
-        </div>
+        <!-- 转写与纪要已拆成两个动作：这里只决定「转写完要不要接着生成」 -->
+        <button class="opt-card opt-inline" id="autoMinutesCard" type="button"
+                role="button" aria-pressed="true" aria-label="转写完成后自动生成纪要">
+          <span class="opt-head">
+            <span class="opt-title">转写完成后自动生成纪要</span>
+            <span class="switch is-on" id="autoMinutesSwitch" aria-hidden="true"><i></i></span>
+          </span>
+          <span class="opt-sub">关闭后只做转写，纪要可在详情页随时生成</span>
+        </button>
 
         <!-- 区分说话人：开启后走离线分离通道（filetrans），关闭走 MIMO -->
         <div class="opt-card" id="diarizationCard" role="button" tabindex="0"
@@ -172,6 +184,14 @@
             </label>
             <p class="opt-note" id="diarNote">人数只是提示，实际由模型判断；开启后音频上限 2 小时</p>
           </div>
+        </div>
+
+        <div class="field" id="templateField">
+          <span class="field-label">选择模板</span>
+          <button class="template-select" id="btnPickTemplate" type="button" aria-haspopup="dialog">
+            <span class="ts-name" id="templateName">默认模板</span>
+            <span class="ts-hint">更换</span>
+          </button>
         </div>
 
         <div class="field">
@@ -200,6 +220,42 @@
           <button class="btn btn-ghost" id="btnCancel" hidden>取消任务</button>
         </div>
       </section>
+    </main>
+
+    <!-- ======= 视图：我的模板 ======= -->
+    <main id="viewTemplates" class="view view-narrow" hidden>
+      <div class="view-head">
+        <button class="btn btn-back" id="btnBackTemplates">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
+          返回
+        </button>
+        <h2 class="view-title">我的模板</h2>
+        <button class="btn btn-primary" id="btnNewTemplate">＋ 新建模板</button>
+      </div>
+
+      <section class="tpl-group">
+        <div class="tpl-group-head">
+          <h3 class="tpl-group-title">系统模板</h3>
+          <span class="tpl-group-hint">随版本更新，不可修改；可复制后调整</span>
+        </div>
+        <div class="tpl-grid" id="builtinList"></div>
+      </section>
+
+      <section class="tpl-group">
+        <div class="tpl-group-head">
+          <h3 class="tpl-group-title">我的模板</h3>
+          <div class="tpl-group-actions">
+            <label class="tpl-check">
+              <input type="checkbox" id="tplCheckAll">
+              全选
+            </label>
+            <span class="tpl-count" id="tplSelCount">已选 0 项</span>
+            <button class="btn btn-ghost tpl-del" id="btnTplBatchDelete" disabled>删除</button>
+          </div>
+        </div>
+        <div class="tpl-grid" id="mineList"></div>
+      </section>
+
     </main>
 
     <!-- ======= 视图：录音 ======= -->
@@ -364,8 +420,14 @@
 
       <section class="card summary-card" id="summaryResult" hidden>
         <div class="card-head">
-          <span class="card-label accent">会议纪要</span>
-          <button class="btn btn-ghost" id="btnCopySummary">复制</button>
+          <div class="minute-head">
+            <span class="card-label accent">会议纪要</span>
+            <div class="minute-tabs" id="minuteTabs" role="tablist" aria-label="纪要版本"></div>
+          </div>
+          <div class="card-head-actions">
+            <button class="btn btn-ghost btn-min-add" id="btnMinuteAdd" title="用另一个模板再生成一份，不会覆盖已有结果">＋ 再生成一份</button>
+            <button class="btn btn-ghost" id="btnCopySummary">复制</button>
+          </div>
         </div>
         <div id="summaryBody"></div>
       </section>
@@ -396,6 +458,60 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <!-- 模板选择浮层：上传页 / 详情页首次生成 / 详情页再生成 共用 -->
+  <div class="layer-backdrop" id="tplPicker" hidden>
+    <div class="layer layer-picker" role="dialog" aria-modal="true" aria-labelledby="tplPickerTitle">
+      <div class="layer-head">
+        <h3 class="layer-title" id="tplPickerTitle">选择纪要模板</h3>
+        <button class="layer-close" data-close-picker aria-label="关闭">&times;</button>
+      </div>
+      <input type="search" id="tplSearch" class="layer-search" placeholder="搜索模板…" autocomplete="off" hidden>
+      <div class="tpl-list" id="tplPickerList"></div>
+      <div class="layer-foot">
+        <span class="layer-note" id="tplPickerNote"></span>
+        <button class="btn btn-ghost" data-close-picker>取消</button>
+        <button class="btn btn-primary" id="tplPickerOk">使用此模板</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模板编辑浮层 -->
+  <div class="layer-backdrop" id="tplEditor" hidden>
+    <div class="layer layer-editor" role="dialog" aria-modal="true" aria-labelledby="tplEditorTitle">
+      <div class="layer-head">
+        <h3 class="layer-title" id="tplEditorTitle">新建模板</h3>
+        <button class="layer-close" data-close-editor aria-label="关闭">&times;</button>
+      </div>
+      <div class="editor-body">
+        <label class="ed-field">
+          <span class="ed-label">名称</span>
+          <input id="edName" maxlength="30" placeholder="例如：周会模板" autocomplete="off">
+        </label>
+        <label class="ed-field">
+          <span class="ed-label">说明</span>
+          <input id="edDesc" maxlength="60" placeholder="一句话描述适用场景" autocomplete="off">
+        </label>
+        <div class="ed-field">
+          <span class="ed-label">章节</span>
+          <div class="ed-sections">
+            <div id="edSectionList"></div>
+            <button class="btn btn-ghost ed-add" id="edAddSection" type="button">＋ 添加章节</button>
+            <p class="ed-tip">顺序即纪要顺序，1~8 个。类型：列表 / 段落 / 待办</p>
+          </div>
+        </div>
+        <label class="ed-field">
+          <span class="ed-label">补充要求</span>
+          <textarea id="edExtra" rows="2" maxlength="500" placeholder="可选：语气、字数、侧重点"></textarea>
+        </label>
+      </div>
+      <div class="layer-foot">
+        <span class="ed-error" id="edError"></span>
+        <button class="btn btn-ghost" data-close-editor>取消</button>
+        <button class="btn btn-primary" id="edSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

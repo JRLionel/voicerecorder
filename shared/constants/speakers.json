@@ -1,0 +1,12 @@
+{
+  "$comment": "说话人展示规则。调色板服务端写库时按首现顺序取色，前端缺色时按同序回落。",
+  "palette": ["#3565d9", "#7c4dd4", "#1f9a62", "#c97a12", "#d84a35", "#5f6b7a"],
+  "labelPrefix": "说话人",
+  "localIdPrefix": "S",
+  "quality": {
+    "failedMaxDistinct": 1,
+    "failedMinSentences": 5,
+    "suspectMaxDistinct": 8,
+    "suspectMaxDurationSec": 900
+  }
+}

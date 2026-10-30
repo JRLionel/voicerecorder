@@ -1,0 +1,14 @@
+{
+  "$comment": "现场标记去向文案。markdown 用于服务端导出，ui 用于页面展示（不带书名号）。",
+  "unused": "未纳入",
+  "todos": "已转为待办",
+  "custom": "已纳入正文",
+  "markdown": {
+    "decisions": "已纳入「决议」",
+    "content": "已纳入「会议内容」"
+  },
+  "ui": {
+    "decisions": "已纳入决议",
+    "content": "已纳入内容"
+  }
+}

@@ -1,0 +1,72 @@
+/* 设计令牌与基础重置：颜色、字体、圆角、阴影、body 背景。
+   任何组件都只引用这里的变量，不写死色值。 */
+
+/* ============================================================
+   VoiceScribe 声记 — 电台编辑部 · 浅色纸感工作台
+   ============================================================ */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  /* 纸感浅色体系 */
+  --paper:     #f6f5f1;
+  --surface:   #fffefb;
+  --surface-2: #efece5;
+  --ink:       #1c1a17;
+  --ink-2:     #57534a;
+  --ink-3:     #948e81;
+  --line:      #e4e0d6;
+  --line-2:    #d5d0c3;
+
+  /* 主色：广播朱红 */
+  --accent:    #d84a35;
+  --accent-dk: #bc3a27;
+  --accent-g:  rgba(216, 74, 53, 0.09);
+  --green:     #1f8a5b;
+  --green-g:   rgba(31, 138, 91, 0.10);
+
+  /* 模板四色 */
+  --c-blue:   #3565d9;
+  --c-blue-g: rgba(53, 101, 217, 0.10);
+  --c-violet: #7c4dd4;
+  --c-violet-g: rgba(124, 77, 212, 0.10);
+  --c-green:  #1f9a62;
+  --c-green-g: rgba(31, 154, 98, 0.10);
+  --c-amber:  #c97a12;
+  --c-amber-g: rgba(201, 122, 18, 0.12);
+
+  --red: #d84a35;
+  --red-g: rgba(216, 74, 53, 0.09);
+
+  --radius:    12px;
+  --shadow-1:  0 1px 2px rgba(28, 26, 23, 0.05);
+  --shadow-2:  0 6px 24px -8px rgba(28, 26, 23, 0.14);
+  --font:      'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --serif:     'Noto Serif SC', 'Songti SC', serif;
+  --mono:      'JetBrains Mono', 'SF Mono', monospace;
+}
+
+html {
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  /* 纸张噪点 + 顶部渐层 */
+  background:
+    radial-gradient(1100px 340px at 50% -120px, rgba(216, 74, 53, 0.06), transparent 70%),
+    var(--paper);
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 28px 60px;
+}

@@ -1,0 +1,15 @@
+{
+  "$comment": "任务阶段 → 界面文案。key 与 jobs.stage 的取值一一对应。",
+  "QUEUED": "排队中",
+  "PROBING": "正在读取文件信息",
+  "EXTRACTING": "正在抽取音频",
+  "CHUNKING": "正在规划分段",
+  "UPLOAD_REMOTE": "正在上传用于分离",
+  "DIARIZING": "正在识别说话人",
+  "TRANSCRIBING": "正在转写",
+  "SUMMARIZING": "正在生成纪要",
+  "DONE": "完成",
+  "FAILED": "处理失败",
+  "CANCELED": "已取消",
+  "fallback": "处理中"
+}

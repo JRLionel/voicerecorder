@@ -1,0 +1,36 @@
+{
+  "$comment": "识别/纪要引擎枚举与默认模型名。模型名可由 .env 覆盖，这里只是缺省值。",
+  "engines": {
+    "mimo": "mimo",
+    "bailianStream": "bailian_stream",
+    "bailianFiletrans": "bailian_filetrans",
+    "skipSilence": "skip_silence"
+  },
+  "jobStatus": ["queued", "running", "done", "failed", "canceled"],
+  "jobStage": [
+    "QUEUED", "PROBING", "EXTRACTING", "CHUNKING", "UPLOAD_REMOTE",
+    "DIARIZING", "TRANSCRIBING", "SUMMARIZING", "DONE", "FAILED", "CANCELED"
+  ],
+  "diarizeStatus": ["off", "running", "ok", "failed", "suspect"],
+  "segmentStatus": ["pending", "done", "failed", "fallback"],
+  "defaults": {
+    "asrModel": "qwen-audio-3.0-asr-flash-streaming",
+    "diarModel": "qwen-audio-3.0-asr-flash-filetrans",
+    "language": "auto",
+    "port": 3000,
+    "output": "summary"
+  },
+  "languages": ["auto", "zh", "en", "ja", "ko"],
+  "timeouts": {
+    "mimoRetries": 2,
+    "bailianRetries": 2,
+    "retryBaseMs": 1000,
+    "bailianTaskMs": 300000,
+    "bailianPollMs": 2000,
+    "ossPolicyMs": 20000,
+    "ossUploadMs": 180000,
+    "submitTaskMs": 30000,
+    "pollTaskMs": 20000,
+    "fetchResultMs": 60000
+  }
+}

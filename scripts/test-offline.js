@@ -4,8 +4,13 @@
  * 运行：node scripts/test-offline.js
  */
 const assert = require("node:assert");
-const { normalizeSentences, analyzeDiarization } = require("../server/bailian-offline");
-const { buildEvents, buildBlocks, normalize, toMarkdown } = require("../server/summary");
+const { normalizeSentences, analyzeDiarization } = require("../src/server/modules/asr");
+const { buildEvents, buildBlocks } = require("../src/server/modules/minutes/event-stream");
+const templates = require("../src/server/modules/templates");
+const { normalizeSummary } = require("../src/server/modules/minutes/normalizer");
+const { toMarkdown } = require("../src/server/modules/minutes/markdown");
+
+const tplLib = { ...templates, normalizeSummary, toMarkdown };
 
 let passed = 0;
 
@@ -122,25 +127,33 @@ test("buildBlocks: 标记不落在块边界被孤立", () => {
 });
 
 test("normalize: 缺省字段不炸", () => {
-  const j = normalize({});
-  assert.deepEqual(j.todos, []);
+  const j = tplLib.normalizeSummary({}, tplLib.DEFAULT_TEMPLATE);
+  assert.deepEqual(j.sections.length, 3);
+  assert.deepEqual(j.sections[2].items, []);
   assert.deepEqual(j.markers, []);
   assert.deepEqual(j.speakerPoints, []);
 });
 
 test("normalize: usedIn 非法值回落为 content", () => {
-  const j = normalize({ markers: [{ at: "00:01:00", text: "x", usedIn: "bogus" }] });
+  const j = tplLib.normalizeSummary(
+    { markers: [{ at: "00:01:00", text: "x", usedIn: "bogus" }] },
+    tplLib.DEFAULT_TEMPLATE
+  );
   assert.equal(j.markers[0].usedIn, "content");
 });
 
 test("toMarkdown: 两种附加节按数据出现", () => {
-  const md = toMarkdown(
-    normalize({
-      topic: "t",
-      content: ["c"],
-      markers: [{ at: "00:12:43", text: "客户下周来", usedIn: "decisions" }],
-      speakerPoints: [{ speaker: "张总", points: ["进度"] }],
-    })
+  const md = tplLib.toMarkdown(
+    tplLib.DEFAULT_TEMPLATE,
+    tplLib.normalizeSummary(
+      {
+        topic: "t",
+        content: ["c"],
+        markers: [{ at: "00:12:43", text: "客户下周来", usedIn: "decisions" }],
+        speakerPoints: [{ speaker: "张总", points: ["进度"] }],
+      },
+      tplLib.DEFAULT_TEMPLATE
+    )
   );
   assert.ok(md.includes("## 现场标记"));
   assert.ok(md.includes("## 按人要点"));

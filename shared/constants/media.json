@@ -1,0 +1,35 @@
+{
+  "$comment": "音频/视频格式与转码参数。extensions 为服务端白名单；accept 为前端 file input 的过滤串。",
+  "acceptedExtensions": {
+    "audio": [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".webm", ".amr", ".wma"],
+    "video": [".mp4", ".mov", ".mkv", ".avi", ".m4v", ".flv", ".ts", ".wmv"]
+  },
+  "videoDetection": [".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"],
+  "accept": {
+    "audio": "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.amr,.wma",
+    "video": "video/*,.mp4,.mov,.mkv,.avi,.m4v,.webm"
+  },
+  "pcm": {
+    "sampleRate": 16000,
+    "channels": 1,
+    "bits": 16,
+    "headerBytes": 44
+  },
+  "ffmpeg": {
+    "highpassHz": 80,
+    "loudnorm": "I=-16:TP=-2:LRA=11",
+    "mp3Bitrate": "64k"
+  },
+  "silence": {
+    "noiseDb": -35,
+    "minDurSec": 0.6,
+    "toleranceSec": 1.0,
+    "cutWindowRatio": 0.35,
+    "minCutGapRatio": 0.6,
+    "minCutGapSec": 3
+  },
+  "wav": {
+    "bytesPerSample": 2,
+    "estimateBytesPerSec": 32000
+  }
+}
